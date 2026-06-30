@@ -129,7 +129,7 @@ jobs:
         id: cache-uup
         uses: actions/cache@v4
         with:
-          path: ./#ISO/*.ISO
+          path: ./files/*.ISO
           key: uup-iso-${{ env.UUP_ID }}-${{ github.event.inputs.uup_language }}-${{ github.event.inputs.edition_home }}-${{ github.event.inputs.edition_pro }}-${{ github.event.inputs.edition_homen }}-${{ github.event.inputs.edition_pron }}
 
       - name: Configure UUP Dump ID
@@ -184,7 +184,7 @@ jobs:
 
       - name: Building Windows Image
         if: steps.cache-uup.outputs.cache-hit != 'true'
-        working-directory: ./#ISO
+        working-directory: ./files
         run: cmd.exe /c uup_download_windows.cmd
 
       - name: Create Release and Upload ISO
@@ -192,7 +192,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $isos = @(Get-ChildItem -Path ./#ISO -Filter *.ISO -File)
+          $isos = @(Get-ChildItem -Path ./files -Filter *.ISO -File)
           if (-not $isos) {
               Write-Error "No ISO files found to upload."
               exit 1
