@@ -105,26 +105,44 @@ jobs:
           
           $foundId = $null
           if ($response.response.builds) {
-              foreach ($build in $response.response.builds.PSObject.Properties) {
-                  $uuid = $build.Value.uuid
+              $builds = $response.response.builds.PSObject.Properties.Value | Sort-Object created -Descending
+              
+              foreach ($build in $builds) {
+                  $uuid = $build.uuid
+                  $title = $build.title
                   
-                  if ($ring -eq "RETAIL" -or $ring -eq "CANARY") {
-                      $foundId = $uuid
-                      break
+                  # Fast reject partial updates
+                  if ($title -match '\.NET' -or $title -match 'OOBE' -or $title -match 'Preview Update' -or $title -match '^Update for' -or $title -match '^Cumulative Update' -or $title -match 'Security Update') {
+                      continue
                   }
                   
-                  $langUrl = "https://api.uupdump.net/listlangs.php?id=$uuid"
-                  $langResp = Invoke-RestMethod -Uri $langUrl
-                  $actualRing = $langResp.response.updateInfo.ring.ToUpper()
+                  $isRingMatch = $false
+                  if ($ring -eq "RETAIL" -or $ring -eq "CANARY") {
+                      $isRingMatch = $true
+                  } else {
+                      $langUrl = "https://api.uupdump.net/listlangs.php?id=$uuid"
+                      try {
+                          $langResp = Invoke-RestMethod -Uri $langUrl -ErrorAction Stop
+                          $actualRing = $langResp.response.updateInfo.ring.ToUpper()
+                          $mappedRing = $actualRing
+                          if ($actualRing -eq 'WIF') { $mappedRing = 'DEV' }
+                          if ($actualRing -eq 'WIS') { $mappedRing = 'BETA' }
+                          if ($actualRing -eq 'RP') { $mappedRing = 'RELEASE PREVIEW' }
+                          if ($mappedRing -eq $ring) { $isRingMatch = $true }
+                      } catch {}
+                  }
                   
-                  $mappedRing = $actualRing
-                  if ($actualRing -eq 'WIF') { $mappedRing = 'DEV' }
-                  if ($actualRing -eq 'WIS') { $mappedRing = 'BETA' }
-                  if ($actualRing -eq 'RP') { $mappedRing = 'RELEASE PREVIEW' }
-                  
-                  if ($mappedRing -eq $ring) {
-                      $foundId = $uuid
-                      break
+                  if ($isRingMatch) {
+                      $language = '${{ github.event.inputs.uup_language }}'.Trim().ToLower()
+                      $editionsUrl = "https://api.uupdump.net/listeditions.php?id=$uuid&pack=$language"
+                      try {
+                          $editionsResp = Invoke-RestMethod -Uri $editionsUrl -ErrorAction Stop
+                          if ($editionsResp.response.editionList) {
+                              $foundId = $uuid
+                              Write-Host "Selected Build: $title ($uuid)"
+                              break
+                          }
+                      } catch {}
                   }
               }
           }
@@ -144,7 +162,7 @@ jobs:
           path: ./*.ISO
           key: uup-iso-${{ env.UUP_ID }}-${{ github.event.inputs.uup_language }}-${{ github.event.inputs.edition_home }}-${{ github.event.inputs.edition_pro }}-${{ github.event.inputs.edition_homen }}-${{ github.event.inputs.edition_pron }}
 
-      - name: Configure UUP Dump ID
+      - name: Download and Configure UUP Dump Package
         if: steps.cache-uup.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
@@ -167,31 +185,40 @@ jobs:
           }
           $edition = $editions -join '%3B'
 
-          if ($newId -match '^[a-fA-F0-9\-]{36}$') {
-              Write-Host "Updating UUP Dump script..."
-              Write-Host "ID: $newId"
-              Write-Host "Language: $language"
-              Write-Host "Edition: $edition"
-              
-              $scriptFiles = Get-ChildItem -Path . -Filter "uup_download_windows.cmd" -Recurse
-              foreach ($script in $scriptFiles) {
-                  Write-Host "Modifying $($script.FullName)"
-                  $content = Get-Content $script.FullName -Raw
-                  
-                  # Replace ID
-                  $content = $content -replace 'id=[a-fA-F0-9\-]{36}', "id=$newId"
-                  
-                  # Replace pack (language) avoiding 'neutral' from apps
-                  $content = $content -replace 'pack=(?!neutral\b)[a-zA-Z\-]+', "pack=$language"
-                  
-                  # Replace edition avoiding 'app' from apps
-                  $content = $content -replace 'edition=(?!app\b)[a-zA-Z;%0-9]+', "edition=$edition"
-                  
-                  Set-Content $script.FullName -Value $content -Encoding UTF8
+          Write-Host "Downloading the UUP dump package..."
+          $downloadPackageUrl = "https://uupdump.net/get.php?id=$newId&pack=$language&edition=$edition"
+          $downloadPackageBody = @{ autodl=2; updates=1; cleanup=1 }
+          
+          Invoke-WebRequest -Method Post -Uri $downloadPackageUrl -Body $downloadPackageBody -OutFile "uupdump_package.zip"
+          
+          Write-Host "Extracting package..."
+          Expand-Archive "uupdump_package.zip" -DestinationPath . -Force
+          
+          Write-Host "Configuring ConvertConfig.ini..."
+          $configPath = "ConvertConfig.ini"
+          if (Test-Path $configPath) {
+              $convertConfig = (Get-Content $configPath) -replace '^(AutoExit\s*)=.*','$1=1' -replace '^(ResetBase\s*)=.*','$1=1' -replace '^(Cleanup\s*)=.*','$1=1'
+              Set-Content -Encoding ascii -Path $configPath -Value $convertConfig
+          }
+          
+          Write-Host "Patching aria2 flags in uup_download_windows.cmd to reduce log spam..."
+          $cmdPath = "uup_download_windows.cmd"
+          if (Test-Path $cmdPath) {
+              $content = Get-Content $cmdPath -Raw
+              $patternsToRemove = @(
+                '\s--console-log-level=\w+\b',
+                '\s--summary-interval=\d+\b',
+                '\s--download-result=\w+\b',
+                '\s--enable-color=\w+\b',
+                '\s-(?:q|quiet(?:=\w+)?)\b'
+              )
+              foreach ($re in $patternsToRemove) {
+                  $content = [regex]::Replace($content, $re, '', 'IgnoreCase, CultureInvariant')
               }
-          } else {
-              Write-Error "The UUP Dump ID format is invalid. It must be a 36-character UUID."
-              exit 1
+              $inject = '--quiet=true --console-log-level=error --summary-interval=0 --download-result=hide --enable-color=false '
+              $content = [regex]::Replace($content, '("%aria2%"\s+)', ('$1' + $inject), 'IgnoreCase, CultureInvariant')
+              
+              Set-Content -Path $cmdPath -Value $content -Encoding UTF8
           }
 
       - name: Patch get_aria2.ps1 to avoid Get-FileHash issues
@@ -214,7 +241,60 @@ jobs:
 
       - name: Building Windows Image
         if: steps.cache-uup.outputs.cache-hit != 'true'
-        run: cmd.exe /c uup_download_windows.cmd
+        shell: pwsh
+        run: |
+          $rawLog = "uup_dism_aria2_raw.log"
+          
+          # Function to clean ansi escapes and log nicely
+          $reAnsi = [regex]'\x1B\[[0-9;]*[A-Za-z]'
+          $DismLastBucket = -1
+          
+          Write-Host "Starting uup_download_windows.cmd..."
+          
+          & {
+            cmd.exe /c uup_download_windows.cmd 2>&1 | Tee-Object -FilePath $rawLog | ForEach-Object {
+              $line = [string]$_
+              if ([string]::IsNullOrWhiteSpace($line)) { return }
+              
+              # Simple progress bucketing for DISM
+              $cleanLine = $reAnsi.Replace($line, '')
+              
+              if ($cleanLine -match '\[\s*[= \-]*\s*(\d+(?:[.,]\d+)?)%\s*[= \-]*\s*\]') {
+                $pctStr = $matches[1] -replace ',', '.'
+                $pct = [int][math]::Floor([double]$pctStr)
+                $bucket = [int]([math]::Floor($pct / 10) * 10)
+                
+                if ($bucket -gt $DismLastBucket) {
+                  $DismLastBucket = $bucket
+                  Write-Host "[DISM] Progress: $bucket%"
+                  if ($bucket -ge 100) { Write-Host "[DISM] Progress: 100% (done)"; $DismLastBucket = -1 }
+                }
+              }
+              elseif ($cleanLine -match 'Archiving file data:\s+.*?\((\d+)%\)\s+done') {
+                $pct = [int]$matches[1]
+                $bucket = [int]([math]::Floor($pct / 10) * 10)
+                if ($bucket -gt $DismLastBucket) {
+                  $DismLastBucket = $bucket
+                  Write-Host "[WIM] Progress: $bucket%"
+                  if ($bucket -ge 100) { Write-Host "[WIM] Progress: 100% (done)"; $DismLastBucket = -1 }
+                }
+              }
+              else {
+                if ($cleanLine -match '^\s*(Mounting image|Saving image|Applying image|Exporting image|Unmounting image|Deployment Image Servicing and Management tool|^=== )') {
+                  $DismLastBucket = -1
+                }
+                # Print non-progress lines
+                Write-Host $cleanLine
+              }
+            }
+          }
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning title=Build failed::Dumping last 500 raw log lines"
+            Get-Content $rawLog -Tail 500 | Write-Host
+            Write-Error "uup_download_windows.cmd failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
 
       - name: Create Release and Upload ISO
         shell: pwsh
