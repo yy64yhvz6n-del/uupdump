@@ -26,10 +26,14 @@ on:
         description: 'Architecture'
         type: choice
         options:
-          - 'amd64'
+          - 'x64'
           - 'arm64'
-        default: 'amd64'
+        default: 'x64'
         required: true
+      uup_id:
+        description: 'UUP Dump ID (Optional. If set, ignores OS/Ring selections)'
+        type: string
+        required: false
       uup_language:
         description: 'Language (ex: en-us, es-es, es-mx)'
         type: string
@@ -73,13 +77,21 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@latest
 
       - name: Resolve UUP Dump ID via API
         shell: pwsh
         run: |
+          $manualId = '${{ github.event.inputs.uup_id }}'.Trim()
+          if ($manualId -match '^[a-fA-F0-9\-]{36}$') {
+              Write-Host "Manual UUP Dump ID provided: $manualId. Skipping API query."
+              echo "UUP_ID=$manualId" >> $env:GITHUB_ENV
+              exit 0
+          }
+          
           $os = '${{ github.event.inputs.os_version }}'.ToLower()
           $arch = '${{ github.event.inputs.os_arch }}'.ToLower()
+          if ($arch -eq 'x64') { $arch = 'amd64' } # UUP Dump API expects amd64
           $ring = '${{ github.event.inputs.os_ring }}'.ToUpper()
           
           $searchQuery = "$os $arch"
@@ -127,9 +139,9 @@ jobs:
 
       - name: Cache UUP Dump ISO
         id: cache-uup
-        uses: actions/cache@v4
+        uses: actions/cache@latest
         with:
-          path: ./files/*.ISO
+          path: ./*.ISO
           key: uup-iso-${{ env.UUP_ID }}-${{ github.event.inputs.uup_language }}-${{ github.event.inputs.edition_home }}-${{ github.event.inputs.edition_pro }}-${{ github.event.inputs.edition_homen }}-${{ github.event.inputs.edition_pron }}
 
       - name: Configure UUP Dump ID
@@ -184,7 +196,6 @@ jobs:
 
       - name: Building Windows Image
         if: steps.cache-uup.outputs.cache-hit != 'true'
-        working-directory: ./files
         run: cmd.exe /c uup_download_windows.cmd
 
       - name: Create Release and Upload ISO
@@ -192,7 +203,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $isos = @(Get-ChildItem -Path ./files -Filter *.ISO -File)
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
           if (-not $isos) {
               Write-Error "No ISO files found to upload."
               exit 1
