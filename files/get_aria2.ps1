@@ -34,19 +34,10 @@ function Test-Hash {
     )
 
     Write-Host -BackgroundColor Black -ForegroundColor Cyan "Verifying ${File}..."
+    Import-Module Microsoft.PowerShell.Utility -ErrorAction SilentlyContinue
 
-    try {
-        $stream = [System.IO.File]::OpenRead("files\$File")
-        $sha256 = [System.Security.Cryptography.SHA256]::Create()
-        $hashBytes = $sha256.ComputeHash($stream)
-        $stream.Close()
-        $fileHash = [BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
-        return ($fileHash -eq $Hash.ToLower())
-    } catch {
-        Write-Error "Failed to compute hash for ${File}: $_"
-        if ($stream) { $stream.Close() }
-        return $false
-    }
+    $fileHash = (Get-FileHash -Path "files\$File" -Algorithm SHA256 -ErrorAction Stop).Hash
+    return ($fileHash.ToLower() -eq $Hash)
 }
 
 if((Test-Existence -File $file) -and (Test-Hash -File $file -Hash $hash)) {
