@@ -34,7 +34,6 @@ function Test-Hash {
     )
 
     Write-Host -BackgroundColor Black -ForegroundColor Cyan "Verifying ${File}..."
-    Import-Module Microsoft.PowerShell.Utility -ErrorAction SilentlyContinue
 
     $fileHash = (Get-FileHash -Path "files\$File" -Algorithm SHA256 -ErrorAction Stop).Hash
     return ($fileHash.ToLower() -eq $Hash)
