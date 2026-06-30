@@ -1,0 +1,345 @@
+name: Builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_version:
+        description: 'Operating System'
+        type: choice
+        options:
+          - 'Windows 11'
+          - 'Windows 10'
+        default: 'Windows 11'
+        required: true
+      os_ring:
+        description: 'Channel / Ring'
+        type: choice
+        options:
+          - 'Retail'
+          - 'Release Preview'
+          - 'Beta'
+          - 'Dev'
+          - 'Canary'
+        default: 'Retail'
+        required: true
+      os_arch:
+        description: 'Architecture'
+        type: choice
+        options:
+          - 'amd64'
+          - 'arm64'
+        default: 'amd64'
+        required: true
+      uup_language:
+        description: 'Language (ex: en-us, es-es, es-mx)'
+        type: string
+        default: 'en-us'
+        required: true
+      tipo_build:
+        description: 'Build Modification? (Select ONLY ONE edition if using Tiny11)'
+        type: choice
+        options:
+          - 'Without any modifications'
+          - 'Tiny11'
+          - 'Tiny11 Virtual Machine'
+        default: 'Without any modifications'
+        required: true
+      bypass_reqs:
+        description: 'Bypass System Requirements (Tiny11 only)'
+        type: boolean
+        default: true
+      edition_home:
+        description: 'Windows Home'
+        type: boolean
+        default: true
+      edition_pro:
+        description: 'Windows Pro'
+        type: boolean
+        default: true
+      edition_homen:
+        description: 'Windows Home N'
+        type: boolean
+        default: false
+      edition_pron:
+        description: 'Windows Pro N'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve UUP Dump ID via API
+        shell: pwsh
+        run: |
+          $os = '${{ github.event.inputs.os_version }}'.ToLower()
+          $arch = '${{ github.event.inputs.os_arch }}'.ToLower()
+          $ring = '${{ github.event.inputs.os_ring }}'.ToUpper()
+          
+          $searchQuery = "$os $arch"
+          if ($os -eq "windows 10") { $searchQuery = "windows 10 19045 $arch" }
+          if ($ring -eq "RETAIL" -and $os -eq "windows 11") { $searchQuery = "windows 11 26100 $arch" }
+          if ($ring -eq "CANARY" -and $os -eq "windows 11") { $searchQuery = "windows 11 $arch" }
+          
+          Write-Host "Searching UUP API for: $searchQuery (Ring: $ring)"
+          $listIdUrl = "https://api.uupdump.net/listid.php?search=$([uri]::EscapeDataString($searchQuery))"
+          $response = Invoke-RestMethod -Uri $listIdUrl
+          
+          $foundId = $null
+          if ($response.response.builds) {
+              foreach ($build in $response.response.builds.PSObject.Properties) {
+                  $uuid = $build.Value.uuid
+                  
+                  if ($ring -eq "RETAIL" -or $ring -eq "CANARY") {
+                      $foundId = $uuid
+                      break
+                  }
+                  
+                  $langUrl = "https://api.uupdump.net/listlangs.php?id=$uuid"
+                  $langResp = Invoke-RestMethod -Uri $langUrl
+                  $actualRing = $langResp.response.updateInfo.ring.ToUpper()
+                  
+                  $mappedRing = $actualRing
+                  if ($actualRing -eq 'WIF') { $mappedRing = 'DEV' }
+                  if ($actualRing -eq 'WIS') { $mappedRing = 'BETA' }
+                  if ($actualRing -eq 'RP') { $mappedRing = 'RELEASE PREVIEW' }
+                  
+                  if ($mappedRing -eq $ring) {
+                      $foundId = $uuid
+                      break
+                  }
+              }
+          }
+          
+          if (-not $foundId) {
+              Write-Error "No build found for OS: $os, Ring: $ring, Arch: $arch."
+              exit 1
+          }
+          
+          Write-Host "Resolved UUP Dump ID: $foundId"
+          echo "UUP_ID=$foundId" >> $env:GITHUB_ENV
+
+      - name: Cache UUP Dump ISO
+        id: cache-uup
+        uses: actions/cache@v4
+        with:
+          path: ./#ISO/*.ISO
+          key: uup-iso-${{ env.UUP_ID }}-${{ github.event.inputs.uup_language }}-${{ github.event.inputs.edition_home }}-${{ github.event.inputs.edition_pro }}-${{ github.event.inputs.edition_homen }}-${{ github.event.inputs.edition_pron }}
+
+      - name: Configure UUP Dump ID
+        if: steps.cache-uup.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $newId = $env:UUP_ID
+          $language = '${{ github.event.inputs.uup_language }}'.Trim().ToLower()
+          
+          $editions = @()
+          if ('${{ github.event.inputs.edition_home }}' -eq 'true') { $editions += 'core' }
+          if ('${{ github.event.inputs.edition_pro }}' -eq 'true') { $editions += 'professional' }
+          if ('${{ github.event.inputs.edition_homen }}' -eq 'true') { $editions += 'coren' }
+          if ('${{ github.event.inputs.edition_pron }}' -eq 'true') { $editions += 'professionaln' }
+
+          if ($editions.Count -eq 0) {
+              Write-Error "You must select at least one edition."
+              exit 1
+          }
+          if ('${{ github.event.inputs.tipo_build }}' -ne 'Without any modifications' -and $editions.Count -gt 1) {
+              Write-Error "You can only select ONE edition when building Tiny11 (since index 1 is processed). To download multiple editions, select 'Without any modifications'."
+              exit 1
+          }
+          $edition = $editions -join '%3B'
+
+          if ($newId -match '^[a-fA-F0-9\-]{36}$') {
+              Write-Host "Updating UUP Dump script..."
+              Write-Host "ID: $newId"
+              Write-Host "Language: $language"
+              Write-Host "Edition: $edition"
+              
+              $scriptFiles = Get-ChildItem -Path . -Filter "uup_download_windows.cmd" -Recurse
+              foreach ($script in $scriptFiles) {
+                  Write-Host "Modifying $($script.FullName)"
+                  $content = Get-Content $script.FullName -Raw
+                  
+                  # Replace ID
+                  $content = $content -replace 'id=[a-fA-F0-9\-]{36}', "id=$newId"
+                  
+                  # Replace pack (language) avoiding 'neutral' from apps
+                  $content = $content -replace 'pack=(?!neutral\b)[a-zA-Z\-]+', "pack=$language"
+                  
+                  # Replace edition avoiding 'app' from apps
+                  $content = $content -replace 'edition=(?!app\b)[a-zA-Z;%0-9]+', "edition=$edition"
+                  
+                  Set-Content $script.FullName -Value $content -Encoding UTF8
+              }
+          } else {
+              Write-Error "The UUP Dump ID format is invalid. It must be a 36-character UUID."
+              exit 1
+          }
+
+      - name: Building Windows Image
+        if: steps.cache-uup.outputs.cache-hit != 'true'
+        working-directory: ./#ISO
+        run: cmd.exe /c uup_download_windows.cmd
+
+      - name: Create Release and Upload ISO
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $isos = @(Get-ChildItem -Path ./#ISO -Filter *.ISO -File)
+          if (-not $isos) {
+              Write-Error "No ISO files found to upload."
+              exit 1
+          }
+
+          $archMap = @{
+              'A64'   = 'ARM64'
+              'AMD64' = 'x64'
+              'X64'   = 'x64'
+              'X86'   = 'x86'
+              'ARM64' = 'ARM64'
+          }
+
+          $summary = [System.Text.StringBuilder]::new()
+          [void]$summary.AppendLine('## Build Summary')
+          [void]$summary.AppendLine('')
+
+          $primaryBuild = ""
+          $primaryIso = $isos[0]
+          
+          foreach ($iso in $isos) {
+              $name = $iso.BaseName
+              $build   = if ($name -match '^(\d+\.\d+)')                                                                                              { $matches[1] } else { '' }
+              $version = if ($name -match '\.(\d+H\d+)_')                                                                                             { $matches[1] } else { '' }
+              $archRaw = if ($name -match '_(A64|AMD64|X64|X86|ARM64)FRE_')                                                                           { $matches[1] } else { '' }
+              $arch    = if ($archRaw -and $archMap.ContainsKey($archRaw))                                                                            { $archMap[$archRaw] } else { $archRaw }
+              $edition = if ($name -match '_(CLIENT[A-Z]*|SERVER[A-Z]*|PROFESSIONAL|HOME[A-Z]*|ENTERPRISE[A-Z]*|EDUCATION[A-Z]*|CORE[A-Z]*)_')      { $matches[1] } else { '' }
+              $lang    = if ($name -match '_([a-z]{2,3}-[a-z]{2,5})$')                                                                                { $matches[1].ToUpper() } else { '' }
+
+              if ($build -and -not $primaryBuild) {
+                  $primaryBuild = $build
+              }
+
+              $titleParts = @()
+              if ($version) { $titleParts += $version }
+              if ($arch)    { $titleParts += $arch }
+              if ($edition) { $titleParts += $edition }
+              $suffix = if ($titleParts.Count) { ' (' + ($titleParts -join ' · ') + ')' } else { '' }
+              $heading = if ($build) { "### Build $build$suffix" } else { "### $($iso.Name)" }
+
+              [void]$summary.AppendLine($heading)
+              [void]$summary.AppendLine('')
+              [void]$summary.AppendLine('| Field | Value |')
+              [void]$summary.AppendLine('| --- | --- |')
+              if ($build)   { [void]$summary.AppendLine("| Build | $build |") }
+              if ($version) { [void]$summary.AppendLine("| Version | $version |") }
+              if ($arch)    { [void]$summary.AppendLine("| Architecture | $arch |") }
+              if ($edition) { [void]$summary.AppendLine("| Edition | $edition |") }
+              if ($lang)    { [void]$summary.AppendLine("| Language | $lang |") }
+              [void]$summary.AppendLine("| ISO file | ``$($iso.Name)`` |")
+              [void]$summary.AppendLine('')
+          }
+
+          $dateStr = Get-Date -Format "yyyy-MM-dd"
+          $tagName = if ($primaryBuild) { "build-$primaryBuild-$dateStr" } else { "build-$dateStr" }
+          $releaseTitle = if ($primaryBuild) { "Build $primaryBuild ($dateStr)" } else { "Build $dateStr" }
+          
+          $notesPath = "release_notes.md"
+          $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
+
+          Write-Host "::group::Creating Release $tagName"
+          $releaseExists = gh release view $tagName 2>&1
+          if ($LASTEXITCODE -ne 0) {
+              gh release create $tagName --title $releaseTitle --notes-file $notesPath
+          } else {
+              gh release edit $tagName --notes-file $notesPath
+          }
+          Write-Host '::endgroup::'
+
+          foreach ($iso in $isos) {
+              Write-Host "::group::Uploading $($iso.Name) to GitHub Release"
+              gh release upload $tagName $iso.FullName --clobber
+              Write-Host '::endgroup::'
+          }
+
+          if ('${{ github.event.inputs.tipo_build }}' -eq 'Tiny11') {
+              Write-Host "::group::Building Tiny11"
+              $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
+              $driveLetter = ($mountResult | Get-Volume).DriveLetter
+              if (-not $driveLetter) {
+                  Write-Error "Failed to mount ISO or get drive letter."
+                  exit 1
+              }
+              Write-Host "ISO mounted on $driveLetter`:"
+              
+              $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
+              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs
+              
+              Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
+              
+              if (Test-Path "tiny11.iso") {
+                  $newName = $primaryIso.BaseName + "_Tiny11.iso"
+                  Rename-Item "tiny11.iso" $newName
+                  $newIso = Get-Item $newName
+                  
+                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release"
+                  gh release upload $tagName $newIso.FullName --clobber
+                  Write-Host '::endgroup::'
+                  
+                  [void]$summary.AppendLine("### Tiny11 Image")
+                  [void]$summary.AppendLine("- **ISO file**: ``$newName``")
+                  [void]$summary.AppendLine('')
+                  
+                  $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
+                  gh release edit $tagName --notes-file $notesPath
+              } else {
+                  Write-Error "tiny11.iso was not generated."
+              }
+              Write-Host "::endgroup::"
+          }
+
+          if ('${{ github.event.inputs.tipo_build }}' -eq 'Tiny11 Virtual Machine') {
+              Write-Host "::group::Building Tiny11 Core VM"
+              $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
+              $driveLetter = ($mountResult | Get-Volume).DriveLetter
+              if (-not $driveLetter) {
+                  Write-Error "Failed to mount ISO or get drive letter."
+                  exit 1
+              }
+              Write-Host "ISO mounted on $driveLetter`:"
+              
+              $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
+              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs
+              
+              Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
+              
+              if (Test-Path "tiny11.iso") {
+                  $newName = $primaryIso.BaseName + "_Tiny11_Core.iso"
+                  Rename-Item "tiny11.iso" $newName
+                  $newIso = Get-Item $newName
+                  
+                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release"
+                  gh release upload $tagName $newIso.FullName --clobber
+                  Write-Host '::endgroup::'
+                  
+                  [void]$summary.AppendLine("### Tiny11 Core Image")
+                  [void]$summary.AppendLine("- **ISO file**: ``$newName``")
+                  [void]$summary.AppendLine('')
+                  
+                  $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
+                  gh release edit $tagName --notes-file $notesPath
+              } else {
+                  Write-Error "tiny11.iso (Core) was not generated."
+              }
+              Write-Host "::endgroup::"
+          }
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+              $summary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          }
