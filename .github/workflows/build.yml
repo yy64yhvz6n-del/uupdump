@@ -77,7 +77,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@latest
+      - uses: actions/checkout@v7
 
       - name: Resolve UUP Dump ID via API
         shell: pwsh
@@ -139,7 +139,7 @@ jobs:
 
       - name: Cache UUP Dump ISO
         id: cache-uup
-        uses: actions/cache@latest
+        uses: actions/cache@v6
         with:
           path: ./*.ISO
           key: uup-iso-${{ env.UUP_ID }}-${{ github.event.inputs.uup_language }}-${{ github.event.inputs.edition_home }}-${{ github.event.inputs.edition_pro }}-${{ github.event.inputs.edition_homen }}-${{ github.event.inputs.edition_pron }}
