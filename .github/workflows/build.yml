@@ -56,6 +56,10 @@ on:
         description: 'Bypass System Requirements'
         type: boolean
         default: true
+      remove_edge:
+        description: 'Remove Microsoft Edge (Only Tiny11). Not Recommended'
+        type: boolean
+        default: false
       edition_home:
         description: 'Windows Home'
         type: boolean
@@ -502,7 +506,8 @@ jobs:
               
               $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
               $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
-              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp
+              $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
+              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge
               
               Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
               
@@ -547,7 +552,8 @@ jobs:
               
               $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
               $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
-              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp
+              $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
+              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge
               
               Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
               
