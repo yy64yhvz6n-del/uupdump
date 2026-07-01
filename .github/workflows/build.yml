@@ -49,11 +49,11 @@ on:
         default: 'Without any modifications'
         required: true
       esd_compression:
-        description: 'ESD Compression (Smaller ISO, longer build time)'
+        description: 'ESD Compression (Smaller ISO)'
         type: boolean
         default: true
       bypass_reqs:
-        description: 'Bypass System Requirements (Tiny11 only)'
+        description: 'Bypass System Requirements'
         type: boolean
         default: true
       edition_home:
@@ -299,6 +299,54 @@ jobs:
             Get-Content $rawLog -Tail 500 | Write-Host
             Write-Error "uup_download_windows.cmd failed with exit code $LASTEXITCODE"
             exit $LASTEXITCODE
+          }
+
+      - name: Create bypass requirements autounattend.xml
+        if: steps.cache-uup.outputs.cache-hit != 'true' && github.event.inputs.build_type == 'Without any modifications' && github.event.inputs.bypass_reqs == 'true'
+        shell: pwsh
+        run: |
+          $isofilesDir = "ISOFILES"
+          if (-not (Test-Path $isofilesDir)) { New-Item -ItemType Directory -Force -Path $isofilesDir | Out-Null }
+          $unattendPath = Join-Path $isofilesDir "autounattend.xml"
+          
+          if (Test-Path $unattendPath) {
+              Write-Host "An autounattend.xml already exists in ISOFILES. Skipping bypass injection to avoid overwriting user configuration."
+          } else {
+              Write-Host "Generating autounattend.xml to bypass Windows 11 requirements..."
+              $arch = '${{ github.event.inputs.os_arch }}'
+              $procArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
+              $xml = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <unattend xmlns="urn:schemas-microsoft-com:unattend">
+              <settings pass="windowsPE">
+                  <component name="Microsoft-Windows-Setup" processorArchitecture="$procArch" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                      <RunSynchronous>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>1</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>2</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>3</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>4</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>5</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                      </RunSynchronous>
+                  </component>
+              </settings>
+          </unattend>
+          "@
+              Set-Content -Path $unattendPath -Value $xml -Encoding UTF8
           }
 
       - name: Inject ISOFILES into standard ISO

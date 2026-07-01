@@ -1,54 +1,53 @@
-# Windows 11 ISO Builder UUP Dump + Tiny11 with GitHub Actions
+**English** | [Español](README_ES.md)
 
-Este repositorio utiliza GitHub Actions para construir imágenes ISO de Windows 11 personalizadas, permite descargar la build que quieras desde UUP, aplicar parches de Tiny11 y personalizar la ISO con tus propios archivos. Todas las ISOs se almacenaran en release, para que puedas tener todas en tu propio repositorio sin ocupar espacio de tu PC.
+# Windows ISO Builder UUP Dump + Tiny11 with GitHub Actions
 
-## Características Principales
+This repository uses GitHub Actions to build custom Windows 11 ISO images. It allows you to download any build you want from UUP, apply Tiny11 patches, and customize the ISO with your own files. All ISOs will be stored in releases, so you can have them all in your own repository without taking up space on your PC.
 
-- **Descarga la última versión desde UUP:** Mediante la API de UUP puede seleccionar personalizar que versión de Windows, Channel/Ring, Arquitectura e Idioma, en caso que quiera una versión en especifico puede usar el ID de UUP para ser mas especifico.
-- **Aplicar Tiny11:** Puede crear una imagen limpia de Windows, una imagen de Tiny11 o Tiny11 Virtual Machine (Tiny11 Core, esta versión no se recomienda para uso en PCs normales).
-- **Agregar archivos personalizados en la ISO (`ISOFILES`):** Usando un`autounattend.xml` puedes personalizar mas tu instalación de Windows.
-- **Guarda tus ISOs personalizadas en Releases:** Cada ISO que crees sera guardada por partes en la sección **Releases** de este repositorio, para que puedas tener todas en tu propio repositorio sin ocupar espacio de tu PC, y estaran disponibles por 90 dias sin partes como Artifact en el Workflow que genere.
+## Key Features
 
-Opcionalmente tambien puede aplicar compresión de ESD y saltar los requisitos de Windows 11.
----
+- **Download the latest version from UUP:** Through the UUP API, you can customize which Windows version, Channel/Ring, Architecture, and Language you want. If you want a specific version, you can use the UUP ID to be more precise.
+- **Apply Tiny11:** You can create a clean Windows image, a Tiny11 image, or a Tiny11 Virtual Machine (Tiny11 Core; this version is not recommended for use on normal PCs).
+- **Add custom files to the ISO (`ISOFILES`):** Using an `autounattend.xml` you can further customize your Windows installation.
+- **Save your custom ISOs in Releases:** Every ISO you create will be saved in parts in the Releases section of this repository, so you can have them all in your own repository without taking up space on your PC. They will also be available for 90 days without being split into parts as an Artifact in the Workflow that generated it.
 
-## Configuraciones
+Optionally, you can also apply ESD compression and bypass Windows 11 requirements.
 
-Puede personalizar lo siguiente:
+## Configurations
+
+You can customize the following:
 
 - **`os_version`**: Windows 10/11.
-- **`os_ring`**: Canal de actualizaciones: *Retail*, *Release Preview*, *Beta*, *Dev*, *Canary*.
+- **`os_ring`**: Update channel: *Retail*, *Release Preview*, *Beta*, *Dev*, *Canary*.
 - **`os_arch`**: *x64* (Intel/AMD) / *arm64* (Snapdragon/NVIDIA).
-- **`uup_id`** (Opcional): Si deseas una build especifica puede colocarla aqui, para obtenerlo seleccione una build y copie de la barra de direcciones el ID como se muestra en la imagen:![alt text](<screenshot.png>).
-- **`uup_language`**: El idioma que desea para su imagen, puede ver cual es su region tag en [Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/available-language-packs-for-windows?view=windows-11), deberia de seguir un formato asi: en-US (Inglés de Estados Unidos), es-ES (Español de España), es-MX (Español de México), etc.
-- **`build_type`**: Define el nivel de modificación de la ISO:
-  - *Without any modifications*: Build oficial de Windows.
-  - *Tiny11*: Aplica Tiny11.
-  - *Tiny11 Virtual Machine*: Aplica Tiny11 Core. Recomendado **UNICAMENTE** para máquinas virtuales de prueba, esta versión no incluye Windows Defender, actualizaciones y puede tener problemas con algunos programas.
-- **`esd_compression`**:  Comprime a `.esd`. El tamaño sera menor pero llevara mas tiempo, te recomendamos unicamente no seleccionarlo en caso que desee personalizar su imagen de Windows con NTLite o programas similares .
-- **`bypass_reqs`**: Omite los requisitos de instalación de Windows 11. Solo aplica si usas la opción *Tiny11*.
-- **Ediciones de Windows (`edition_home`, `edition_pro`, `edition_homen`, `edition_pron`)**: Selecciona las ediciones que desea incluir en su ISO. Si aplica Tiny11 solo puede incluir una edición. Sobre las ediciones Home N/Pro N, no incluyen Windows Media Player/Media Player y otros componentes de reproducción multimedia, no recomendamos su uso para evitar problemas de compatibilidad con algunos programas.
+- **`uup_id`** (Optional): If you want a specific build, you can place its ID here. To get it, select a build and copy the ID from the address bar as shown in the image: ![alt text](<screenshot.webp>).
+- **`uup_language`**: The language you want for your image. You can see your region tag on [Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/available-language-packs-for-windows?view=windows-11). It should follow a format like: en-US (English - United States), es-ES (Spanish - Spain), es-MX (Spanish - Mexico), etc.
+- **`build_type`**: Defines the level of ISO modification:
+  - *Without any modifications*: Official Windows build.
+  - *Tiny11*: Applies Tiny11.
+  - *Tiny11 Virtual Machine*: Applies Tiny11 Core. Recommended **ONLY** for testing virtual machines. This version does not include Windows Defender, updates, and may have issues with some programs.
+- **`esd_compression`**: Compresses to `.esd`. The size will be smaller but it will take more time. We recommend not selecting it only if you want to customize your Windows image with NTLite or similar programs.
+- **`bypass_reqs`**: Bypasses Windows 11 installation requirements (works for both original and modified builds).
+- **Windows Editions (`edition_home`, `edition_pro`, `edition_homen`, `edition_pron`)**: Select the editions you want to include in your ISO. If you apply Tiny11, you can only include one edition. Regarding the Home N/Pro N editions, they do not include Windows Media Player/Media Player and other media playback components. We do not recommend using them to avoid compatibility issues with some programs.
 
----
+## Inject your own files into your ISO (or include an `autounattend.xml`)
 
-## Inyectar tus propios archivos en tu ISO (o incluir un `autounattend.xml`)
+If you want to further customize your installation or create an identical image to install on multiple computers, you can place files in the `ISOFILES` folder.
 
-Si quieres personalizar mas tu instalación o realizar una imagen identica para instalar en varios equipos puede colocar archivos en la carpeta `ISOFILES`
+Any file or folder you place there will be compressed into the same ISO. Each file cannot exceed 25 MB (via Git it supports up to 100 MB).
 
-Cualqueir archivo o carpeta que coloque ahi, se comprimira en la misma ISO. Cada archivo no puede exceder los 25 MB (mediante Git soporta hasta 100 MB) 
-*Nota: Hay un archivo llamado [Add files.md](./ISOFILES/Add%20files.md) dentro. te recomendamos que lo revises, este archivo no sera incluido en su ISO final.*
----
+*Note: There is a file called [Add files.md](./ISOFILES/Add%20files.md) inside. We recommend you review it; this file will not be included in your final ISO.*
 
-## Cómo empezar a usarlo
+## How to get started
 
-1. Haz un fork de este repositorio y situate en él.
-2. (Opcional) Sube los archivos que desees incluir en ISOFILES.
-3. Ve a la pestaña **Actions**.
-4. Selecciona **Build Windows 11 Image** en el menú de la izquierda.
-5. Haz clic en **Run workflow**.
-6. Configure lo que desee.
-7. Haz clic en el botón verde **Run workflow**. La creación puede tardar desde unos minutos hasta unas horas.
+1. Fork this repository and navigate to it.
+2. (Optional) Upload the files you want to include in ISOFILES.
+3. Go to the **Actions** tab.
+4. Select **Build Windows 11 Image** from the left menu.
+5. Click on **Run workflow**.
+6. Configure as desired.
+7. Click the green **Run workflow** button. Creation can take anywhere from a few minutes to a few hours.
 
-Una vez finalizado el proceso tienes 90 dias para descargar la ISO desde GitHub Actions Artifacts, tambien puedes encontrar las ISOs en la pestaña **Releases** divididas en partes, en caso que cree una versión de Tiny11 tendra tanto la original como la versión modificada por Tiny11.
+Once the process is finished, you have 90 days to download the ISO from GitHub Actions Artifacts. You can also find the ISOs in the **Releases** tab divided into parts. If you create a Tiny11 version, you will have both the original and the version modified by Tiny11.
 
-Parte del código para obtener versiones mediante la API de UUP fue gracias a [marcinmajsc/uup-dump-build-and-get-windows-iso](https://github.com/marcinmajsc/uup-dump-build-and-get-windows-iso)
+Part of the code to get versions through the UUP API was thanks to [marcinmajsc/uup-dump-build-and-get-windows-iso](https://github.com/marcinmajsc/uup-dump-build-and-get-windows-iso).
