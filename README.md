@@ -50,3 +50,5 @@ Cualqueir archivo o carpeta que coloque ahi, se comprimira en la misma ISO. Cada
 7. Haz clic en el botón verde **Run workflow**. La creación puede tardar desde unos minutos hasta unas horas.
 
 Una vez finalizado el proceso tienes 90 dias para descargar la ISO desde GitHub Actions Artifacts, tambien puedes encontrar las ISOs en la pestaña **Releases** divididas en partes, en caso que cree una versión de Tiny11 tendra tanto la original como la versión modificada por Tiny11.
+
+Parte del código para obtener versiones mediante la API de UUP fue gracias a [marcinmajsc/uup-dump-build-and-get-windows-iso](https://github.com/marcinmajsc/uup-dump-build-and-get-windows-iso)
