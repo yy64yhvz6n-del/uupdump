@@ -478,11 +478,11 @@ jobs:
 
           foreach ($iso in $isos) {
               Write-Host "::group::Uploading $($iso.Name) to GitHub Release (Split 7z)"
-              Write-Host "Comprimiendo y dividiendo el ISO en partes de 1.9GB..."
+              Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
               $zipName = "$($iso.BaseName).7z"
               7z a -v1900m $zipName $iso.FullName
               
-              Write-Host "Subiendo partes a GitHub Release..."
+              Write-Host "Uploading parts to GitHub Release..."
               $parts = Get-ChildItem -Path "$($iso.BaseName).7z.*"
               foreach ($part in $parts) {
                   gh release upload $tagName $part.FullName --clobber
@@ -512,11 +512,11 @@ jobs:
                   $newIso = Get-Item $newName
                   
                   Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
-                  Write-Host "Comprimiendo y dividiendo el ISO en partes de 1.9GB..."
+                  Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
                   $zipName = "$($newIso.BaseName).7z"
                   7z a -v1900m $zipName $newIso.FullName
                   
-                  Write-Host "Subiendo partes a GitHub Release..."
+                  Write-Host "Uploading parts to GitHub Release..."
                   $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
                   foreach ($part in $parts) {
                       gh release upload $tagName $part.FullName --clobber
@@ -557,11 +557,11 @@ jobs:
                   $newIso = Get-Item $newName
                   
                   Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
-                  Write-Host "Comprimiendo y dividiendo el ISO en partes de 1.9GB..."
+                  Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
                   $zipName = "$($newIso.BaseName).7z"
                   7z a -v1900m $zipName $newIso.FullName
                   
-                  Write-Host "Subiendo partes a GitHub Release..."
+                  Write-Host "Uploading parts to GitHub Release..."
                   $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
                   foreach ($part in $parts) {
                       gh release upload $tagName $part.FullName --clobber
@@ -586,7 +586,7 @@ jobs:
 
       - name: Upload ISO as Artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Windows-ISO
           path: ./*.ISO
