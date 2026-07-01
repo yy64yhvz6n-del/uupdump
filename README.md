@@ -6,14 +6,15 @@ Este repositorio utiliza GitHub Actions para construir imágenes ISO de Windows 
 
 - **Descarga la última versión desde UUP:** Mediante la API de UUP puede seleccionar personalizar que versión de Windows, Channel/Ring, Arquitectura e Idioma, en caso que quiera una versión en especifico puede usar el ID de UUP para ser mas especifico.
 - **Aplicar Tiny11:** Puede crear una imagen limpia de Windows, una imagen de Tiny11 o Tiny11 Virtual Machine (Tiny11 Core, esta versión no se recomienda para uso en PCs normales).
-- **Agregar archivos personalizados en la ISO (`ISOFILES`):** Usando un`autounattend.xml` puedes personalizar mas tu instalación de Windows, te recomendamos que revises [Add files.md](./ISOFILES/Add%20files.md).
+- **Agregar archivos personalizados en la ISO (`ISOFILES`):** Usando un`autounattend.xml` puedes personalizar mas tu instalación de Windows.
+- **Guarda tus ISOs personalizadas en Releases:** Cada ISO que crees sera guardada por partes en la sección **Releases** de este repositorio, para que puedas tener todas en tu propio repositorio sin ocupar espacio de tu PC, y estaran disponibles por 90 dias sin partes como Artifact en el Workflow que genere.
 
 Opcionalmente tambien puede aplicar compresión de ESD y saltar los requisitos de Windows 11.
 ---
 
-## ⚙️ Opciones disponibles (Configuración del Workflow)
+## Configuraciones
 
-Al presionar **Run workflow** en la pestaña de Actions, tendrás disponibles las siguientes opciones para configurar exactamente qué ISO deseas generar:
+Puede personalizar lo siguiente:
 
 - **`os_version`**: Windows 10/11.
 - **`os_ring`**: Canal de actualizaciones: *Retail*, *Release Preview*, *Beta*, *Dev*, *Canary*.
@@ -32,23 +33,20 @@ Al presionar **Run workflow** en la pestaña de Actions, tendrás disponibles la
 
 ## Inyectar tus propios archivos en tu ISO (o incluir un `autounattend.xml`)
 
-Si quieres personalizar mas tu instalación o realizar una imagen identica para instalar en varios equipos puede colocar archivos en la carpeta `ISOFILES`:
+Si quieres personalizar mas tu instalación o realizar una imagen identica para instalar en varios equipos puede colocar archivos en la carpeta `ISOFILES`
 
-1. Dirígete a la carpeta `ISOFILES` en la raíz de este repositorio.
-2. Sube allí los archivos o carpetas que quieras inyectar. Cada archivo no puede exceder los 100 MB 
-3. *Nota: Hay un archivo llamado `Add files.md` allí dentro. Su única función es evitar que Git borre la carpeta vacía; será ignorado automáticamente durante la inyección.*
-4. ¡Listo! Al correr el Workflow (cualquiera de los 3 tipos de build), el sistema detectará tus archivos y los copiará de forma nativa a la raíz de la ISO terminada.
-
-Si inyectas un archivo `autounattend.xml` personalizado, este tendrá prioridad absoluta y sobreescribirá cualquier configuración predeterminada de Tiny11, permitiéndote automatizar tu instalación de principio a fin.
-
+Cualqueir archivo o carpeta que coloque ahi, se comprimira en la misma ISO. Cada archivo no puede exceder los 25 MB (mediante Git soporta hasta 100 MB) 
+*Nota: Hay un archivo llamado [Add files.md](./ISOFILES/Add%20files.md) dentro. te recomendamos que lo revises, este archivo no sera incluido en su ISO final.*
 ---
 
 ## Cómo empezar a usarlo
 
-1. Ve a la pestaña **Actions** en tu repositorio de GitHub.
-2. Selecciona **Build Windows 11 Image** en el menú de la izquierda.
-3. Haz clic en **Run workflow**.
-4. Rellena los datos (URL de UUP, Tipo de build, y si deseas compresión ESD).
-5. Haz clic en el botón verde **Run workflow** y ¡relájate! 
+1. Haz un fork de este repositorio y situate en él.
+2. (Opcional) Sube los archivos que desees incluir en ISOFILES.
+3. Ve a la pestaña **Actions**.
+4. Selecciona **Build Windows 11 Image** en el menú de la izquierda.
+5. Haz clic en **Run workflow**.
+6. Configure lo que desee.
+7. Haz clic en el botón verde **Run workflow**. La creación puede tardar desde unos minutos hasta unas horas.
 
-El servidor de GitHub se encargará de todo. Una vez finalizado el proceso (suele tomar entre 20 a 45 minutos dependiendo de la compresión), podrás dirigirte a la sección **Releases** de este repositorio para descargar tu nueva y reluciente ISO de Windows 11.
+Una vez finalizado el proceso tienes 90 dias para descargar la ISO desde GitHub Actions Artifacts, tambien puedes encontrar las ISOs en la pestaña **Releases** divididas en partes, en caso que cree una versión de Tiny11 tendra tanto la original como la versión modificada por Tiny11.
