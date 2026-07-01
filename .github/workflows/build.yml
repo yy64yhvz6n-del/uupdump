@@ -474,13 +474,13 @@ jobs:
           Write-Host '::endgroup::'
 
           foreach ($iso in $isos) {
-              Write-Host "::group::Uploading $($iso.Name) to GitHub Release (Split 7z)"
+              Write-Host "::group::Uploading $($iso.Name) to GitHub Release (Split Zip)"
               Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
-              $zipName = "$($iso.BaseName).7z"
-              7z a -v1900m $zipName $iso.FullName
+              $zipName = "$($iso.BaseName).zip"
+              7z a -tzip -mx=0 -v1900m $zipName $iso.FullName
               
               Write-Host "Uploading parts to GitHub Release..."
-              $parts = Get-ChildItem -Path "$($iso.BaseName).7z.*"
+              $parts = Get-ChildItem -Path "$($iso.BaseName).zip.*"
               foreach ($part in $parts) {
                   gh release upload $tagName $part.FullName --clobber
               }
@@ -522,13 +522,13 @@ jobs:
                   Rename-Item "tiny11.iso" $newName
                   $newIso = Get-Item $newName
                   
-                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
+                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split Zip)"
                   Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
-                  $zipName = "$($newIso.BaseName).7z"
-                  7z a -mx=0 -v1900m $zipName $newIso.FullName
+                  $zipName = "$($newIso.BaseName).zip"
+                  7z a -tzip -mx=0 -v1900m $zipName $newIso.FullName
                   
                   Write-Host "Uploading parts to GitHub Release..."
-                  $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
+                  $parts = Get-ChildItem -Path "$($newIso.BaseName).zip.*"
                   foreach ($part in $parts) {
                       gh release upload $tagName $part.FullName --clobber
                   }
