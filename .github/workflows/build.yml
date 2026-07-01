@@ -39,7 +39,7 @@ on:
         type: string
         default: 'en-us'
         required: true
-      tipo_build:
+      build_type:
         description: 'Build Modification? (Select ONLY ONE edition if using Tiny11)'
         type: choice
         options:
@@ -48,6 +48,10 @@ on:
           - 'Tiny11 Virtual Machine'
         default: 'Without any modifications'
         required: true
+      esd_compression:
+        description: 'ESD Compression (Smaller ISO, longer build time)'
+        type: boolean
+        default: true
       bypass_reqs:
         description: 'Bypass System Requirements (Tiny11 only)'
         type: boolean
@@ -179,7 +183,7 @@ jobs:
               Write-Error "You must select at least one edition."
               exit 1
           }
-          if ('${{ github.event.inputs.tipo_build }}' -ne 'Without any modifications' -and $editions.Count -gt 1) {
+          if ('${{ github.event.inputs.build_type }}' -ne 'Without any modifications' -and $editions.Count -gt 1) {
               Write-Error "You can only select ONE edition when building Tiny11 (since index 1 is processed). To download multiple editions, select 'Without any modifications'."
               exit 1
           }
@@ -197,7 +201,8 @@ jobs:
           Write-Host "Configuring ConvertConfig.ini..."
           $configPath = "ConvertConfig.ini"
           if (Test-Path $configPath) {
-              $convertConfig = (Get-Content $configPath) -replace '^(AutoExit\s*)=.*','$1=1' -replace '^(ResetBase\s*)=.*','$1=1' -replace '^(Cleanup\s*)=.*','$1=1'
+              $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { 1 } else { 0 }
+              $convertConfig = (Get-Content $configPath) -replace '^(AutoExit\s*)=.*','$1=1' -replace '^(ResetBase\s*)=.*','$1=1' -replace '^(Cleanup\s*)=.*','$1=1' -replace '^(AddUpdates\s*)=.*','$1=1' -replace '^(wim2esd\s*)=.*',"`$1=$esdComp"
               Set-Content -Encoding ascii -Path $configPath -Value $convertConfig
           }
           
@@ -296,6 +301,58 @@ jobs:
             exit $LASTEXITCODE
           }
 
+      - name: Inject ISOFILES into standard ISO
+        if: steps.cache-uup.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $isofilesDir = "ISOFILES"
+          if (-not (Test-Path $isofilesDir)) { exit 0 }
+          
+          $customFiles = @(Get-ChildItem -Path $isofilesDir -File -Recurse | Where-Object { $_.BaseName -ne 'Add files.md' })
+          if ($customFiles.Count -eq 0) {
+              Write-Host "No custom files found in ISOFILES. Skipping injection."
+              exit 0
+          }
+          
+          if ('${{ github.event.inputs.build_type }}' -ne 'Without any modifications') {
+              Write-Host "Skipping standard ISO injection since a Tiny11 script will handle it."
+              exit 0
+          }
+          
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
+          if (-not $isos) { exit 0 }
+          $isoPath = $isos[0].FullName
+          
+          Write-Host "::group::Injecting ISOFILES into $($isos[0].Name)"
+          $scratchDir = "$env:SystemDrive\iso_scratch"
+          New-Item -ItemType Directory -Force -Path $scratchDir | Out-Null
+          
+          Write-Host "Mounting ISO..."
+          $mountResult = Mount-DiskImage -ImagePath $isoPath -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter + ":"
+          
+          Write-Host "Extracting ISO contents..."
+          Copy-Item -Path "$driveLetter\*" -Destination $scratchDir -Recurse -Force
+          Dismount-DiskImage -ImagePath $isoPath | Out-Null
+          
+          Write-Host "Injecting files..."
+          Copy-Item -Path "$isofilesDir\*" -Destination $scratchDir -Recurse -Force
+          
+          Write-Host "Rebuilding ISO..."
+          $oscdimg = "files\oscdimg.exe"
+          if (-not (Test-Path $oscdimg)) {
+              New-Item -ItemType Directory -Force -Path "files" | Out-Null
+              $url = "https://msdl.microsoft.com/download/symbols/oscdimg.exe/3D44737265000/oscdimg.exe"
+              Invoke-WebRequest -Uri $url -OutFile $oscdimg
+          }
+          
+          Remove-Item $isoPath -Force
+          & $oscdimg -m -o -u2 -udfver102 "-bootdata:2#p0,e,b$scratchDir\boot\etfsboot.com#pEF,e,b$scratchDir\efi\microsoft\boot\efisys.bin" $scratchDir $isoPath
+          
+          Write-Host "Cleaning up..."
+          Remove-Item -Path $scratchDir -Recurse -Force
+          Write-Host "::endgroup::"
+
       - name: Create Release and Upload ISO
         shell: pwsh
         env:
@@ -372,12 +429,20 @@ jobs:
           Write-Host '::endgroup::'
 
           foreach ($iso in $isos) {
-              Write-Host "::group::Uploading $($iso.Name) to GitHub Release"
-              gh release upload $tagName $iso.FullName --clobber
+              Write-Host "::group::Uploading $($iso.Name) to GitHub Release (Split 7z)"
+              Write-Host "Comprimiendo y dividiendo el ISO en partes de 1.9GB..."
+              $zipName = "$($iso.BaseName).7z"
+              7z a -v1900m $zipName $iso.FullName
+              
+              Write-Host "Subiendo partes a GitHub Release..."
+              $parts = Get-ChildItem -Path "$($iso.BaseName).7z.*"
+              foreach ($part in $parts) {
+                  gh release upload $tagName $part.FullName --clobber
+              }
               Write-Host '::endgroup::'
           }
 
-          if ('${{ github.event.inputs.tipo_build }}' -eq 'Tiny11') {
+          if ('${{ github.event.inputs.build_type }}' -eq 'Tiny11') {
               Write-Host "::group::Building Tiny11"
               $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
               $driveLetter = ($mountResult | Get-Volume).DriveLetter
@@ -388,7 +453,8 @@ jobs:
               Write-Host "ISO mounted on $driveLetter`:"
               
               $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
-              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs
+              $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
+              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp
               
               Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
               
@@ -397,8 +463,16 @@ jobs:
                   Rename-Item "tiny11.iso" $newName
                   $newIso = Get-Item $newName
                   
-                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release"
-                  gh release upload $tagName $newIso.FullName --clobber
+                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
+                  Write-Host "Comprimiendo y dividiendo el ISO en partes de 1.9GB..."
+                  $zipName = "$($newIso.BaseName).7z"
+                  7z a -v1900m $zipName $newIso.FullName
+                  
+                  Write-Host "Subiendo partes a GitHub Release..."
+                  $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
+                  foreach ($part in $parts) {
+                      gh release upload $tagName $part.FullName --clobber
+                  }
                   Write-Host '::endgroup::'
                   
                   [void]$summary.AppendLine("### Tiny11 Image")
@@ -413,7 +487,7 @@ jobs:
               Write-Host "::endgroup::"
           }
 
-          if ('${{ github.event.inputs.tipo_build }}' -eq 'Tiny11 Virtual Machine') {
+          if ('${{ github.event.inputs.build_type }}' -eq 'Tiny11 Virtual Machine') {
               Write-Host "::group::Building Tiny11 Core VM"
               $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
               $driveLetter = ($mountResult | Get-Volume).DriveLetter
@@ -424,7 +498,8 @@ jobs:
               Write-Host "ISO mounted on $driveLetter`:"
               
               $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
-              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs
+              $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
+              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp
               
               Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
               
@@ -433,8 +508,16 @@ jobs:
                   Rename-Item "tiny11.iso" $newName
                   $newIso = Get-Item $newName
                   
-                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release"
-                  gh release upload $tagName $newIso.FullName --clobber
+                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
+                  Write-Host "Comprimiendo y dividiendo el ISO en partes de 1.9GB..."
+                  $zipName = "$($newIso.BaseName).7z"
+                  7z a -v1900m $zipName $newIso.FullName
+                  
+                  Write-Host "Subiendo partes a GitHub Release..."
+                  $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
+                  foreach ($part in $parts) {
+                      gh release upload $tagName $part.FullName --clobber
+                  }
                   Write-Host '::endgroup::'
                   
                   [void]$summary.AppendLine("### Tiny11 Core Image")
@@ -452,3 +535,11 @@ jobs:
           if ($env:GITHUB_STEP_SUMMARY) {
               $summary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
           }
+
+      - name: Upload ISO as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-ISO
+          path: ./*.ISO
+          compression-level: 0

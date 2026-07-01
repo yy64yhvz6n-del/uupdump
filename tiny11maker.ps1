@@ -32,7 +32,8 @@ param (
     [ValidatePattern('^[a-zA-Z]$')][string]$ISO,
     [ValidatePattern('^[a-zA-Z]$')][string]$SCRATCH,
     [int]$Index = 1,
-    [bool]$BypassReqs = $true
+    [bool]$BypassReqs = $true,
+    [bool]$ESDCompression = $false
 )
 
 if (-not $SCRATCH) {
@@ -409,9 +410,21 @@ reg unload HKLM\zSYSTEM | Out-Null
 Write-Output "Unmounting image..."
 Dismount-WindowsImage -Path $ScratchDisk\scratchdir -Save
 Clear-Host
+if ($ESDCompression) {
+    Write-Output "Compressing install.wim to install.esd (This will take a long time)..."
+    Export-WindowsImage -SourceImagePath "$ScratchDisk\tiny11\sources\install.wim" -SourceIndex 1 -DestinationImagePath "$ScratchDisk\tiny11\sources\install.esd" -CompressionType Recovery -CheckIntegrity
+    Remove-Item "$ScratchDisk\tiny11\sources\install.wim" -Force
+}
 Write-Output "The tiny11 image is now completed. Proceeding with the making of the ISO..."
-Write-Output "Copying unattended file for bypassing MS account on OOBE..."
-Copy-Item -Path "$PSScriptRoot\autounattend.xml" -Destination "$ScratchDisk\tiny11\autounattend.xml" -Force | Out-Null
+Write-Output "Copying unattended file and custom ISOFILES..."
+Copy-Item -Path "$PSScriptRoot\autounattend.xml" -Destination "$ScratchDisk\tiny11\autounattend.xml" -Force -ErrorAction SilentlyContinue | Out-Null
+if (Test-Path "$PSScriptRoot\ISOFILES") {
+    $customFiles = @(Get-ChildItem -Path "$PSScriptRoot\ISOFILES" -File -Recurse | Where-Object { $_.BaseName -ne 'Add files.md' })
+    if ($customFiles.Count -gt 0) {
+        Write-Output "Copying custom files from ISOFILES to the ISO root..."
+        Copy-Item -Path "$PSScriptRoot\ISOFILES\*" -Destination "$ScratchDisk\tiny11\" -Recurse -Force | Out-Null
+    }
+}
 Write-Output "Creating ISO image..."
 $ADKDepTools = "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\$hostarchitecture\Oscdimg"
 $localOSCDIMGPath = "$PSScriptRoot\oscdimg.exe"
