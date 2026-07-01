@@ -6,6 +6,8 @@ param (
     [bool]$RemoveEdge = $false
 )
 
+$ErrorActionPreference = 'Continue'
+
 $adminSID = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-544")
 $adminGroup = $adminSID.Translate([System.Security.Principal.NTAccount])
 
@@ -499,7 +501,7 @@ if (Test-Path "$PSScriptRoot\ISOFILES") {
     $customFiles = @(Get-ChildItem -Path "$PSScriptRoot\ISOFILES" -File -Recurse | Where-Object { $_.BaseName -ne 'Add files.md' })
     if ($customFiles.Count -gt 0) {
         Write-Host "Copying custom files from ISOFILES to the ISO root..."
-        Copy-Item -Path "$PSScriptRoot\ISOFILES\*" -Destination "$mainOSDrive\tiny11\" -Recurse -Force | Out-Null
+        Copy-Item -Path "$PSScriptRoot\ISOFILES\*" -Destination "$mainOSDrive\tiny11\" -Recurse -Force -Exclude "Add files.md" | Out-Null
     }
 }
 Write-Host "Creating ISO image..."

@@ -37,6 +37,8 @@ param (
     [bool]$RemoveEdge = $false
 )
 
+$ErrorActionPreference = 'Continue'
+
 if (-not $SCRATCH) {
     $ScratchDisk = $PSScriptRoot -replace '[\\]+$', ''
 } else {
@@ -419,7 +421,7 @@ if (Test-Path "$PSScriptRoot\ISOFILES") {
     $customFiles = @(Get-ChildItem -Path "$PSScriptRoot\ISOFILES" -File -Recurse | Where-Object { $_.BaseName -ne 'Add files.md' })
     if ($customFiles.Count -gt 0) {
         Write-Output "Copying custom files from ISOFILES to the ISO root..."
-        Copy-Item -Path "$PSScriptRoot\ISOFILES\*" -Destination "$ScratchDisk\tiny11\" -Recurse -Force | Out-Null
+        Copy-Item -Path "$PSScriptRoot\ISOFILES\*" -Destination "$ScratchDisk\tiny11\" -Recurse -Force -Exclude "Add files.md" | Out-Null
     }
 }
 Write-Output "Creating ISO image..."

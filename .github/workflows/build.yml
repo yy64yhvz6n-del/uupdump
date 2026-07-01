@@ -388,7 +388,7 @@ jobs:
           Dismount-DiskImage -ImagePath $isoPath | Out-Null
           
           Write-Host "Injecting files..."
-          Copy-Item -Path "$isofilesDir\*" -Destination $scratchDir -Recurse -Force
+          Copy-Item -Path "$isofilesDir\*" -Destination $scratchDir -Recurse -Force -Exclude "Add files.md"
           
           Write-Host "Rebuilding ISO..."
           $oscdimg = "files\oscdimg.exe"
