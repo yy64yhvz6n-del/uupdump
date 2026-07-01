@@ -246,8 +246,6 @@ Write-Output "Removing OneDrive:"
 & 'icacls' "$ScratchDisk\scratchdir\Windows\System32\OneDriveSetup.exe" '/grant' "$($adminGroup.Value):(F)" '/T' '/C' | Out-Null
 Remove-Item -Path "$ScratchDisk\scratchdir\Windows\System32\OneDriveSetup.exe" -Force | Out-Null
 Write-Output "Removal complete!"
-Start-Sleep -Seconds 2
-Clear-Host
 Write-Output "Loading registry..."
 reg load HKLM\zCOMPONENTS $ScratchDisk\scratchdir\Windows\System32\config\COMPONENTS | Out-Null
 reg load HKLM\zDEFAULT $ScratchDisk\scratchdir\Windows\System32\config\default | Out-Null
@@ -369,8 +367,6 @@ Dism.exe /Export-Image /SourceImageFile:"$ScratchDisk\tiny11\sources\install.wim
 Remove-Item -Path "$ScratchDisk\tiny11\sources\install.wim" -Force | Out-Null
 Rename-Item -Path "$ScratchDisk\tiny11\sources\install2.wim" -NewName "install.wim" | Out-Null
 Write-Output "Windows image completed. Continuing with boot.wim."
-Start-Sleep -Seconds 2
-Clear-Host
 Write-Output "Mounting boot image:"
 $wimFilePath = "$ScratchDisk\tiny11\sources\boot.wim"
 & takeown "/F" $wimFilePath | Out-Null
@@ -406,7 +402,6 @@ reg unload HKLM\zSYSTEM | Out-Null
 
 Write-Output "Unmounting image..."
 Dismount-WindowsImage -Path $ScratchDisk\scratchdir -Save
-Clear-Host
 if ($ESDCompression) {
     Write-Output "Compressing install.wim to install.esd (This will take a long time)..."
     Export-WindowsImage -SourceImagePath "$ScratchDisk\tiny11\sources\install.wim" -SourceIndex 1 -DestinationImagePath "$ScratchDisk\tiny11\sources\install.esd" -CompressionType Recovery -CheckIntegrity

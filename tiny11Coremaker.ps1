@@ -109,8 +109,6 @@ foreach ($package in $packagesToRemove) {
 }
 
 Write-Host "Removing of system apps complete! Now proceeding to removal of system packages..."
-Start-Sleep -Seconds 1
-Clear-Host
 
 $scratchDir = "$($env:SystemDrive)\scratchdir"
 $packagePatterns = @(
@@ -187,14 +185,10 @@ Write-Host "Removing OneDrive:"
 & 'icacls' "$mainOSDrive\scratchdir\Windows\System32\OneDriveSetup.exe" '/grant' "$($adminGroup.Value):(F)" '/T' '/C' >null
 Remove-Item -Path "$mainOSDrive\scratchdir\Windows\System32\OneDriveSetup.exe" -Force >null
 Write-Host "Removal complete!"
-Start-Sleep -Seconds 2
-Clear-Host
 Write-Host "Taking ownership of the WinSxS folder. This might take a while..."
 & 'takeown' '/f' "$mainOSDrive\scratchdir\Windows\WinSxS" '/r'
 & 'icacls' "$mainOSDrive\scratchdir\Windows\WinSxS" '/grant' "$($adminGroup.Value):(F)" '/T' '/C'
 Write-host "Complete!"
-Start-Sleep -Seconds 2
-Clear-Host
 Write-Host "Preparing..."
 $folderPath = Join-Path -Path $mainOSDrive -ChildPath "\scratchdir\Windows\WinSxS_edit"
 $sourceDirectory = "$mainOSDrive\scratchdir\Windows\WinSxS"
@@ -455,8 +449,6 @@ Write-Host "Exporting image..."
 Remove-Item -Path "$mainOSDrive\tiny11\sources\install.wim" -Force >null
 Rename-Item -Path "$mainOSDrive\tiny11\sources\install2.wim" -NewName "install.wim" >null
 Write-Host "Windows image completed. Continuing with boot.wim."
-Start-Sleep -Seconds 2
-Clear-Host
 Write-Host "Mounting boot image:"
 $wimFilePath = "$($env:SystemDrive)\tiny11\sources\boot.wim" 
 & takeown "/F" $wimFilePath >null
@@ -490,7 +482,6 @@ reg unload HKLM\zSOFTWARE >null
 reg unload HKLM\zSYSTEM >null
 Write-Host "Unmounting image..."
 & 'dism' '/English' '/unmount-image' "/mountdir:$mainOSDrive\scratchdir" '/commit'
-Clear-Host
 if ($ESDCompression) {
     Write-Host "Exporting ESD. This may take a while..."
     & dism /Export-Image /SourceImageFile:"$mainOSDrive\tiny11\sources\install.wim" /SourceIndex:1 /DestinationImageFile:"$mainOSDrive\tiny11\sources\install.esd" /Compress:recovery

@@ -589,5 +589,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Windows-ISO
-          path: ./*.ISO
+          path: |
+            *.ISO
+            *.iso
           compression-level: 0
