@@ -496,6 +496,18 @@ jobs:
                   gh release upload $tagName $part.FullName --clobber
               }
               Write-Host '::endgroup::'
+
+              [void]$summary.AppendLine("### Downloads (Windows Original)")
+              $partIndex = 1
+              foreach ($part in $parts) {
+                  $url = "https://github.com/${{ github.repository }}/releases/download/$tagName/$($part.Name)"
+                  [void]$summary.AppendLine("- [Download Part $partIndex]($url)")
+                  $partIndex++
+              }
+              [void]$summary.AppendLine('')
+
+              $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
+              gh release edit $tagName --notes-file $notesPath
           }
 
           if ('${{ github.event.inputs.build_type }}' -eq 'Tiny11') {
@@ -524,7 +536,7 @@ jobs:
                   Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
                   Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
                   $zipName = "$($newIso.BaseName).7z"
-                  7z a -v1900m $zipName $newIso.FullName
+                  7z a -mx=0 -v1900m $zipName $newIso.FullName
                   
                   Write-Host "Uploading parts to GitHub Release..."
                   $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
@@ -535,6 +547,13 @@ jobs:
                   
                   [void]$summary.AppendLine("### Tiny11 Image")
                   [void]$summary.AppendLine("- **ISO file**: ``$newName``")
+                  [void]$summary.AppendLine("#### Downloads (Tiny11)")
+                  $partIndex = 1
+                  foreach ($part in $parts) {
+                      $url = "https://github.com/${{ github.repository }}/releases/download/$tagName/$($part.Name)"
+                      [void]$summary.AppendLine("- [Download Part $partIndex]($url)")
+                      $partIndex++
+                  }
                   [void]$summary.AppendLine('')
                   
                   $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
@@ -571,7 +590,7 @@ jobs:
                   Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
                   Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
                   $zipName = "$($newIso.BaseName).7z"
-                  7z a -v1900m $zipName $newIso.FullName
+                  7z a -mx=0 -v1900m $zipName $newIso.FullName
                   
                   Write-Host "Uploading parts to GitHub Release..."
                   $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
@@ -582,6 +601,13 @@ jobs:
                   
                   [void]$summary.AppendLine("### Tiny11 Core Image")
                   [void]$summary.AppendLine("- **ISO file**: ``$newName``")
+                  [void]$summary.AppendLine("#### Downloads (Tiny11 Core)")
+                  $partIndex = 1
+                  foreach ($part in $parts) {
+                      $url = "https://github.com/${{ github.repository }}/releases/download/$tagName/$($part.Name)"
+                      [void]$summary.AppendLine("- [Download Part $partIndex]($url)")
+                      $partIndex++
+                  }
                   [void]$summary.AppendLine('')
                   
                   $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
