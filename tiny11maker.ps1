@@ -84,8 +84,6 @@ if (-not $UserProvidedAutounattend) {
 # Start the transcript and prepare the window
 Start-Transcript -Path "$PSScriptRoot\tiny11_$(get-date -f yyyyMMdd_HHmms).log"
 
-$Host.UI.RawUI.WindowTitle = "Tiny11 image creator"
-Clear-Host
 Write-Output "Welcome to the tiny11 image creator! Release: 09-07-25"
 
 $hostArchitecture = $Env:PROCESSOR_ARCHITECTURE
@@ -117,7 +115,6 @@ Set-ItemProperty -Path "$ScratchDisk\tiny11\sources\install.esd" -Name IsReadOnl
 Remove-Item "$ScratchDisk\tiny11\sources\install.esd" > $null 2>&1
 Write-Output "Copy complete!"
 Start-Sleep -Seconds 2
-Clear-Host
 Write-Output "Getting image information:"
 $ImagesIndex = (Get-WindowsImage -ImagePath $ScratchDisk\tiny11\sources\install.wim).ImageIndex
 if ($ImagesIndex -notcontains $Index) {

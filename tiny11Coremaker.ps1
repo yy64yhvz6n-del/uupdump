@@ -46,7 +46,6 @@ Set-ItemProperty -Path "$mainOSDrive\tiny11\sources\install.esd" -Name IsReadOnl
 Remove-Item "$mainOSDrive\tiny11\sources\install.esd" > $null 2>&1
 Write-Host "Copy complete!"
 Start-Sleep -Seconds 2
-Clear-Host
 Write-Host "Getting image information:"
 &  'dism' '/English' "/Get-WimInfo" "/wimfile:$mainOSDrive\tiny11\sources\install.wim"
 Write-Host "Mounting Windows image. This may take a while."
