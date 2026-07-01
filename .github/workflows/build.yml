@@ -60,6 +60,10 @@ on:
         description: 'Remove Microsoft Edge (Only Tiny11). Not Recommended'
         type: boolean
         default: false
+      strip_short_names:
+        description: 'Strip 8.3 short names (Only Tiny11)'
+        type: boolean
+        default: true
       edition_home:
         description: 'Windows Home'
         type: boolean
@@ -507,7 +511,8 @@ jobs:
               $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
               $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
               $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
-              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge
+              $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
+              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
               
               Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
               
@@ -553,7 +558,8 @@ jobs:
               $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
               $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
               $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
-              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge
+              $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
+              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
               
               Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
               

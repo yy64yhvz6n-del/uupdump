@@ -28,7 +28,8 @@ You can customize the following:
   - *Tiny11 Virtual Machine*: Applies Tiny11 Core. Recommended **ONLY** for testing virtual machines. This version does not include Windows Defender, updates, and may have issues with some programs.
 - **`esd_compression`**: Compresses to `.esd`. The size will be smaller but it will take more time. We recommend not selecting it only if you want to customize your Windows image with NTLite or similar programs.
 - **`bypass_reqs`**: Bypasses Windows 11 installation requirements (works for both original and modified builds).
-- **`remove_edge`**: Removes Microsoft Edge (Only Tiny11). **Not Recommended**, as it can cause issues with some apps. If you do not include it, you can install a browser using Winget.
+- **`remove_edge` (Only Tiny11, not recommended)**: Removes Microsoft Edge. It can cause issues with some apps, if you do not include it, you can install a browser using Winget.
+- **`strip_short_names` (Only Tiny11)**: Strips DOS-compatible 8.3 short names (like `PROGRA~1`) from the image (Only Tiny11). This helps keep the system cleaner and can slightly improve performance by removing legacy compatibility. [More information](https://schneegans.de/windows/no-8.3/#wim).
 - **Windows Editions (`edition_home`, `edition_pro`, `edition_homen`, `edition_pron`)**: Select the editions you want to include in your ISO. If you apply Tiny11, you can only include one edition. Regarding the Home N/Pro N editions, they do not include Windows Media Player/Media Player and other media playback components. We do not recommend using them to avoid compatibility issues with some programs.
 
 ## Inject your own files into your ISO (or include an `autounattend.xml`)

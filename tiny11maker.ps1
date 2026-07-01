@@ -34,7 +34,8 @@ param (
     [int]$Index = 1,
     [bool]$BypassReqs = $true,
     [bool]$ESDCompression = $false,
-    [bool]$RemoveEdge = $false
+    [bool]$RemoveEdge = $false,
+    [bool]$StripShortNames = $false
 )
 
 $ErrorActionPreference = 'Continue'
@@ -368,6 +369,11 @@ dism.exe /Image:$ScratchDisk\scratchdir /Cleanup-Image /StartComponentCleanup /R
 Write-Output "Cleanup complete."
 Write-Output ' '
 Write-Output "Unmounting image..."
+if ($StripShortNames) {
+    Write-Output "Stripping 8.3 short names from the Windows image..."
+    Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile "$PSScriptRoot\PsExec64.exe"
+    & "$PSScriptRoot\PsExec64.exe" -accepteula -s "$env:windir\system32\fsutil.exe" 8dot3name strip /f /s "$ScratchDisk\scratchdir"
+}
 Dismount-WindowsImage -Path $ScratchDisk\scratchdir -Save
 Write-Host "Exporting image..."
 Dism.exe /Export-Image /SourceImageFile:"$ScratchDisk\tiny11\sources\install.wim" /SourceIndex:$index /DestinationImageFile:"$ScratchDisk\tiny11\sources\install2.wim" /Compress:recovery

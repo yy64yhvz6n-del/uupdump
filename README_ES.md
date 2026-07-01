@@ -28,7 +28,8 @@ Puede personalizar lo siguiente:
   - *Tiny11 Virtual Machine*: Aplica Tiny11 Core. Recomendado **UNICAMENTE** para máquinas virtuales de prueba, esta versión no incluye Windows Defender, actualizaciones y puede tener problemas con algunos programas.
 - **`esd_compression`**:  Comprime a `.esd`. El tamaño sera menor pero llevara mas tiempo, te recomendamos unicamente no seleccionarlo en caso que desee personalizar su imagen de Windows con NTLite o programas similares .
 - **`bypass_reqs`**: Omite los requisitos de instalación de Windows 11.
-- **`remove_edge`**: Elimina Microsoft Edge (Solo en Tiny11). **No recomendado**, ya que puede causar problemas con algunas aplicaciones. En caso de no incluirlo puede instalar un navegador mediante Winget.
+- **`remove_edge` (Solo en Tiny11, no recomendado)**: Elimina Microsoft Edge. Puede causar problemas con algunas aplicaciones, en caso de no incluirlo puede instalar un navegador mediante Winget.
+- **`strip_short_names` (Solo en Tiny11)**: Elimina los nombres cortos 8.3 de compatibilidad DOS (como `PROGRA~1`) de la imagen. Esto ayuda a mantener el sistema más limpio y puede mejorar el rendimiento. [Más información](https://schneegans.de/windows/no-8.3/#wim).
 - **Ediciones de Windows (`edition_home`, `edition_pro`, `edition_homen`, `edition_pron`)**: Selecciona las ediciones que desea incluir en su ISO. Si aplica Tiny11 solo puede incluir una edición. Sobre las ediciones Home N/Pro N, no incluyen Windows Media Player/Media Player y otros componentes de reproducción multimedia, no recomendamos su uso para evitar problemas de compatibilidad con algunos programas.
 
 ## Inyectar tus propios archivos en tu ISO (o incluir un `autounattend.xml`)

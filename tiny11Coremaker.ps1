@@ -3,7 +3,8 @@ param (
     [int]$Index = 1,
     [bool]$BypassReqs = $true,
     [bool]$ESDCompression = $false,
-    [bool]$RemoveEdge = $false
+    [bool]$RemoveEdge = $false,
+    [bool]$StripShortNames = $false
 )
 
 $ErrorActionPreference = 'Continue'
@@ -450,6 +451,11 @@ Write-Host "Cleaning up image..."
 Write-Host "Cleanup complete."
 Write-Host ' '
 Write-Host "Unmounting image..."
+if ($StripShortNames) {
+    Write-Host "Stripping 8.3 short names from the Windows image..."
+    Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile "$PSScriptRoot\PsExec64.exe"
+    & "$PSScriptRoot\PsExec64.exe" -accepteula -s "$env:windir\system32\fsutil.exe" 8dot3name strip /f /s "$mainOSDrive\scratchdir"
+}
 & 'dism' '/English' '/unmount-image' "/mountdir:$mainOSDrive\scratchdir" '/commit'
 Write-Host "Exporting image..."
 & 'dism' '/English' '/Export-Image' "/SourceImageFile:$mainOSDrive\tiny11\sources\install.wim" "/SourceIndex:$index" "/DestinationImageFile:$mainOSDrive\tiny11\sources\install2.wim" '/compress:max'
