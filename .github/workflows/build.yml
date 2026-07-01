@@ -167,15 +167,7 @@ jobs:
           Write-Host "Resolved UUP Dump ID: $foundId"
           echo "UUP_ID=$foundId" >> $env:GITHUB_ENV
 
-      - name: Cache UUP Dump ISO
-        id: cache-uup
-        uses: actions/cache@v6
-        with:
-          path: ./*.ISO
-          key: uup-iso-${{ env.UUP_ID }}-${{ github.event.inputs.uup_language }}-${{ github.event.inputs.edition_home }}-${{ github.event.inputs.edition_pro }}-${{ github.event.inputs.edition_homen }}-${{ github.event.inputs.edition_pron }}
-
       - name: Download and Configure UUP Dump Package
-        if: steps.cache-uup.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $newId = $env:UUP_ID
@@ -235,7 +227,6 @@ jobs:
           }
 
       - name: Patch get_aria2.ps1 to avoid Get-FileHash issues
-        if: steps.cache-uup.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $getAriaPath = "files/get_aria2.ps1"
@@ -253,7 +244,6 @@ jobs:
           }
 
       - name: Building Windows Image
-        if: steps.cache-uup.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $rawLog = "uup_dism_aria2_raw.log"
@@ -310,7 +300,7 @@ jobs:
           }
 
       - name: Create bypass requirements autounattend.xml
-        if: steps.cache-uup.outputs.cache-hit != 'true' && github.event.inputs.build_type == 'Without any modifications' && github.event.inputs.bypass_reqs == 'true'
+        if: github.event.inputs.build_type == 'Without any modifications' && github.event.inputs.bypass_reqs == 'true'
         shell: pwsh
         run: |
           $isofilesDir = "ISOFILES"
@@ -358,7 +348,6 @@ jobs:
           }
 
       - name: Inject ISOFILES into standard ISO
-        if: steps.cache-uup.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $isofilesDir = "ISOFILES"
@@ -621,13 +610,3 @@ jobs:
           if ($env:GITHUB_STEP_SUMMARY) {
               $summary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
           }
-
-      - name: Upload ISO as Artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: Windows-ISO
-          path: |
-            *.ISO
-            *.iso
-          compression-level: 0

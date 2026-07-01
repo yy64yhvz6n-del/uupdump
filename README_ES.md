@@ -9,7 +9,7 @@ Este repositorio utiliza GitHub Actions para construir imágenes ISO de Windows 
 - **Descarga la última versión desde UUP:** Mediante la API de UUP puede seleccionar personalizar que versión de Windows, Channel/Ring, Arquitectura e Idioma, en caso que quiera una versión en especifico puede usar el ID de UUP para ser mas especifico.
 - **Aplicar Tiny11:** Puede crear una imagen limpia de Windows, una imagen de Tiny11 o Tiny11 Virtual Machine (Tiny11 Core, esta versión no se recomienda para uso en PCs normales).
 - **Agregar archivos personalizados en la ISO (`ISOFILES`):** Usando un`autounattend.xml` puedes personalizar mas tu instalación de Windows.
-- **Guarda tus ISOs personalizadas en Releases:** Cada ISO que crees sera guardada por partes en la sección Releases de este repositorio, para que puedas tener todas en tu propio repositorio sin ocupar espacio de tu PC, y estaran disponibles por 90 dias sin partes como Artifact en el Workflow que genere.
+- **Guarda tus ISOs personalizadas en Releases:** Cada ISO que crees sera guardada por partes en la sección Releases de este repositorio, para que puedas tener todas en tu propio repositorio sin ocupar espacio de tu PC.
 
 Opcionalmente tambien puede aplicar compresión de ESD y saltar los requisitos de Windows 11.
 
