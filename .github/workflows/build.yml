@@ -399,7 +399,7 @@ jobs:
           Write-Host "::endgroup::"
 
       - name: Create Release and Upload ISO
-        shell: pwsh
+        shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -514,6 +514,10 @@ jobs:
               $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
               $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
               & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
+              if (-not $?) {
+                  Write-Error "tiny11maker.ps1 failed during execution."
+                  exit 1
+              }
               
               Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
               
