@@ -363,6 +363,7 @@ Remove-Item -Path "$tasksPath\Microsoft\Windows\Chkdsk\Proxy" -Force -ErrorActio
 Remove-Item -Path "$tasksPath\Microsoft\Windows\Windows Error Reporting\QueueReporting" -Force -ErrorAction SilentlyContinue
 Write-Host "Task files have been deleted."
 Write-Host "Unmounting Registry..."
+
 reg unload HKLM\zCOMPONENTS | Out-Null
 reg unload HKLM\zDEFAULT | Out-Null
 reg unload HKLM\zNTUSER | Out-Null
@@ -377,45 +378,12 @@ if ($StripShortNames) {
     Write-Output "Stripping 8.3 short names from the Windows image..."
     Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile "$PSScriptRoot\PsExec64.exe"
     & "$PSScriptRoot\PsExec64.exe" -accepteula -s "$env:windir\system32\fsutil.exe" 8dot3name strip /f /s "$ScratchDisk\scratchdir"
-    Start-Sleep -Seconds 3
 }
-
-$unmounted = $false
-for ($i = 0; $i -lt 5; $i++) {
-    Dismount-WindowsImage -Path $ScratchDisk\scratchdir -Save -ErrorAction SilentlyContinue
-    if ($?) {
-        $unmounted = $true
-        break
-    }
-    Write-Host "Unmount failed, retrying in 5 seconds..."
-    Start-Sleep -Seconds 5
-}
-if (-not $unmounted) {
-    Write-Host "Forcing cleanup..."
-    & dism /cleanup-wim | Out-Null
-}
-
+Dismount-WindowsImage -Path $ScratchDisk\scratchdir -Save
 Write-Host "Exporting image..."
 Dism.exe /Export-Image /SourceImageFile:"$ScratchDisk\tiny11\sources\install.wim" /SourceIndex:$index /DestinationImageFile:"$ScratchDisk\tiny11\sources\install2.wim" /Compress:recovery
-
-for ($i = 0; $i -lt 5; $i++) {
-    try {
-        if (Test-Path "$ScratchDisk\tiny11\sources\install.wim") {
-            Remove-Item -Path "$ScratchDisk\tiny11\sources\install.wim" -Force -ErrorAction Stop | Out-Null
-        }
-        if (Test-Path "$ScratchDisk\tiny11\sources\install2.wim") {
-            Rename-Item -Path "$ScratchDisk\tiny11\sources\install2.wim" -NewName "install.wim" -ErrorAction Stop | Out-Null
-        }
-        break
-    } catch {
-        Write-Host "Waiting for file handles to be released... ($i/5)"
-        Start-Sleep -Seconds 3
-    }
-}
-if (-not (Test-Path "$ScratchDisk\tiny11\sources\install.wim")) {
-    Write-Error "Failed to replace install.wim!"
-    exit 1
-}
+Remove-Item -Path "$ScratchDisk\tiny11\sources\install.wim" -Force | Out-Null
+Rename-Item -Path "$ScratchDisk\tiny11\sources\install2.wim" -NewName "install.wim" | Out-Null
 Write-Output "Windows image completed. Continuing with boot.wim."
 Write-Output "Mounting boot image:"
 $wimFilePath = "$ScratchDisk\tiny11\sources\boot.wim"

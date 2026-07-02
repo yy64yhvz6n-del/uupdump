@@ -444,15 +444,15 @@ $servicePaths = @(
 )
 
 foreach ($path in $servicePaths) {
-    Set-ItemProperty -Path "HKLM:\zSYSTEM\ControlSet001\Services\$path" -Name "Start" -Value 4
+    & 'reg' 'add' "HKLM\zSYSTEM\ControlSet001\Services\$path" '/v' 'Start' '/t' 'REG_DWORD' '/d' '4' '/f' 2>$null | Out-Null
 }
-& 'reg' 'add' 'HKLM\zSOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' '/v' 'SettingsPageVisibility' '/t' 'REG_SZ' '/d' 'hide:virus;windowsupdate' '/f' 
+& 'reg' 'add' 'HKLM\zSOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' '/v' 'SettingsPageVisibility' '/t' 'REG_SZ' '/d' 'hide:virus;windowsupdate' '/f' 2>$null | Out-Null
 Write-Host "Tweaking complete!"
 Write-Host "Unmounting Registry..."
 reg unload HKLM\zCOMPONENTS | Out-Null
 reg unload HKLM\zDEFAULT | Out-Null
 reg unload HKLM\zNTUSER | Out-Null
-reg unload HKLM\zSOFTWARE
+reg unload HKLM\zSOFTWARE | Out-Null
 reg unload HKLM\zSYSTEM | Out-Null
 Write-Host "Cleaning up image..."
 & 'dism' '/English' "/image:$mainOSDrive\scratchdir" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
@@ -463,45 +463,12 @@ if ($StripShortNames) {
     Write-Host "Stripping 8.3 short names from the Windows image..."
     Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile "$PSScriptRoot\PsExec64.exe"
     & "$PSScriptRoot\PsExec64.exe" -accepteula -s "$env:windir\system32\fsutil.exe" 8dot3name strip /f /s "$mainOSDrive\scratchdir"
-    Start-Sleep -Seconds 3
 }
-
-$unmounted = $false
-for ($i = 0; $i -lt 5; $i++) {
-    & 'dism' '/English' '/unmount-image' "/mountdir:$mainOSDrive\scratchdir" '/commit'
-    if ($LASTEXITCODE -eq 0) {
-        $unmounted = $true
-        break
-    }
-    Write-Host "Unmount failed, retrying in 5 seconds..."
-    Start-Sleep -Seconds 5
-}
-if (-not $unmounted) {
-    Write-Host "Forcing cleanup..."
-    & dism /cleanup-wim | Out-Null
-}
-
+& 'dism' '/English' '/unmount-image' "/mountdir:$mainOSDrive\scratchdir" '/commit'
 Write-Host "Exporting image..."
 & 'dism' '/English' '/Export-Image' "/SourceImageFile:$mainOSDrive\tiny11\sources\install.wim" "/SourceIndex:$index" "/DestinationImageFile:$mainOSDrive\tiny11\sources\install2.wim" '/compress:max'
-
-for ($i = 0; $i -lt 5; $i++) {
-    try {
-        if (Test-Path "$mainOSDrive\tiny11\sources\install.wim") {
-            Remove-Item -Path "$mainOSDrive\tiny11\sources\install.wim" -Force -ErrorAction Stop | Out-Null
-        }
-        if (Test-Path "$mainOSDrive\tiny11\sources\install2.wim") {
-            Rename-Item -Path "$mainOSDrive\tiny11\sources\install2.wim" -NewName "install.wim" -ErrorAction Stop | Out-Null
-        }
-        break
-    } catch {
-        Write-Host "Waiting for file handles to be released... ($i/5)"
-        Start-Sleep -Seconds 3
-    }
-}
-if (-not (Test-Path "$mainOSDrive\tiny11\sources\install.wim")) {
-    Write-Error "Failed to replace install.wim!"
-    exit 1
-}
+Remove-Item -Path "$mainOSDrive\tiny11\sources\install.wim" -Force | Out-Null
+Rename-Item -Path "$mainOSDrive\tiny11\sources\install2.wim" -NewName "install.wim" | Out-Null
 Write-Host "Windows image completed. Continuing with boot.wim."
 Write-Host "Mounting boot image:"
 $wimFilePath = "$($env:SystemDrive)\tiny11\sources\boot.wim" 
