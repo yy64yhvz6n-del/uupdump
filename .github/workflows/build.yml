@@ -398,8 +398,8 @@ jobs:
           Remove-Item -Path $scratchDir -Recurse -Force
           Write-Host "::endgroup::"
 
-      - name: Create Release and Upload ISO
-        shell: powershell
+      - name: Create Release and Upload Standard ISO
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -457,6 +457,30 @@ jobs:
               [void]$summary.AppendLine('')
           }
 
+          [void]$summary.AppendLine('## Workflow Configuration')
+          $buildType = '${{ github.event.inputs.build_type }}'
+          if ($buildType -match 'Tiny11') {
+              [void]$summary.AppendLine("- **Build Type:** $buildType")
+          }
+          if ('${{ github.event.inputs.esd_compression }}' -eq 'true') {
+              [void]$summary.AppendLine("- **ESD Compression:** Enabled")
+          }
+          if ('${{ github.event.inputs.remove_edge }}' -eq 'true') {
+              [void]$summary.AppendLine("- **Remove Microsoft Edge:** Yes")
+          }
+          if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') {
+              [void]$summary.AppendLine("- **Strip 8.3 short names:** Yes")
+          }
+          $editions = @()
+          if ('${{ github.event.inputs.edition_home }}' -eq 'true') { $editions += 'Home' }
+          if ('${{ github.event.inputs.edition_pro }}' -eq 'true') { $editions += 'Pro' }
+          if ('${{ github.event.inputs.edition_homen }}' -eq 'true') { $editions += 'Home N' }
+          if ('${{ github.event.inputs.edition_pron }}' -eq 'true') { $editions += 'Pro N' }
+          if ($editions.Count -gt 0) {
+              [void]$summary.AppendLine("- **Editions Included:** $($editions -join ', ')")
+          }
+          [void]$summary.AppendLine('')
+
           $dateStr = Get-Date -Format "yyyy-MM-dd"
           $tagName = if ($primaryBuild) { "build-$primaryBuild-$dateStr" } else { "build-$dateStr" }
           $releaseTitle = if ($primaryBuild) { "Build $primaryBuild ($dateStr)" } else { "Build $dateStr" }
@@ -498,119 +522,157 @@ jobs:
               $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
               gh release edit $tagName --notes-file $notesPath
           }
-
-          if ('${{ github.event.inputs.build_type }}' -eq 'Tiny11') {
-              Write-Host "::group::Building Tiny11"
-              $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
-              $driveLetter = ($mountResult | Get-Volume).DriveLetter
-              if (-not $driveLetter) {
-                  Write-Error "Failed to mount ISO or get drive letter."
-                  exit 1
-              }
-              Write-Host "ISO mounted on $driveLetter`:"
-              
-              $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
-              $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
-              $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
-              $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
-              & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
-              if (-not $?) {
-                  Write-Error "tiny11maker.ps1 failed during execution."
-                  exit 1
-              }
-              
-              Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
-              
-              if (Test-Path "tiny11.iso") {
-                  $newName = $primaryIso.BaseName + "_Tiny11.iso"
-                  Rename-Item "tiny11.iso" $newName
-                  $newIso = Get-Item $newName
-                  
-                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split Zip)"
-                  Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
-                  $zipName = "$($newIso.BaseName).zip"
-                  7z a -tzip -mx=0 -v1900m $zipName $newIso.FullName
-                  
-                  Write-Host "Uploading parts to GitHub Release..."
-                  $parts = Get-ChildItem -Path "$($newIso.BaseName).zip.*"
-                  foreach ($part in $parts) {
-                      gh release upload $tagName $part.FullName --clobber
-                  }
-                  Write-Host '::endgroup::'
-                  
-                  [void]$summary.AppendLine("### Tiny11 Image")
-                  [void]$summary.AppendLine("- **ISO file**: ``$newName``")
-                  [void]$summary.AppendLine("#### Downloads (Tiny11)")
-                  $partIndex = 1
-                  foreach ($part in $parts) {
-                      $url = "https://github.com/${{ github.repository }}/releases/download/$tagName/$($part.Name)"
-                      [void]$summary.AppendLine("- [Download Part $partIndex]($url)")
-                      $partIndex++
-                  }
-                  [void]$summary.AppendLine('')
-                  
-                  $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
-                  gh release edit $tagName --notes-file $notesPath
-              } else {
-                  Write-Error "tiny11.iso was not generated."
-              }
-              Write-Host "::endgroup::"
-          }
-
-          if ('${{ github.event.inputs.build_type }}' -eq 'Tiny11 Virtual Machine') {
-              Write-Host "::group::Building Tiny11 Core VM"
-              $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
-              $driveLetter = ($mountResult | Get-Volume).DriveLetter
-              if (-not $driveLetter) {
-                  Write-Error "Failed to mount ISO or get drive letter."
-                  exit 1
-              }
-              Write-Host "ISO mounted on $driveLetter`:"
-              
-              $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
-              $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
-              $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
-              $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
-              & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
-              
-              Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
-              
-              if (Test-Path "tiny11.iso") {
-                  $newName = $primaryIso.BaseName + "_Tiny11_Core.iso"
-                  Rename-Item "tiny11.iso" $newName
-                  $newIso = Get-Item $newName
-                  
-                  Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
-                  Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
-                  $zipName = "$($newIso.BaseName).7z"
-                  7z a -mx=0 -v1900m $zipName $newIso.FullName
-                  
-                  Write-Host "Uploading parts to GitHub Release..."
-                  $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
-                  foreach ($part in $parts) {
-                      gh release upload $tagName $part.FullName --clobber
-                  }
-                  Write-Host '::endgroup::'
-                  
-                  [void]$summary.AppendLine("### Tiny11 Core Image")
-                  [void]$summary.AppendLine("- **ISO file**: ``$newName``")
-                  [void]$summary.AppendLine("#### Downloads (Tiny11 Core)")
-                  $partIndex = 1
-                  foreach ($part in $parts) {
-                      $url = "https://github.com/${{ github.repository }}/releases/download/$tagName/$($part.Name)"
-                      [void]$summary.AppendLine("- [Download Part $partIndex]($url)")
-                      $partIndex++
-                  }
-                  [void]$summary.AppendLine('')
-                  
-                  $summary.ToString() | Out-File -FilePath $notesPath -Encoding utf8
-                  gh release edit $tagName --notes-file $notesPath
-              } else {
-                  Write-Error "tiny11.iso (Core) was not generated."
-              }
-              Write-Host "::endgroup::"
-          }
-
+          
+          # Export for next steps
+          echo "TAG_NAME=$tagName" >> $env:GITHUB_ENV
+          echo "NOTES_PATH=$notesPath" >> $env:GITHUB_ENV
+          
           if ($env:GITHUB_STEP_SUMMARY) {
               $summary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
           }
+
+      - name: Build and Upload Tiny11
+        if: ${{ github.event.inputs.build_type == 'Tiny11' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
+          if (-not $isos) {
+              Write-Error "No ISO files found."
+              exit 1
+          }
+          $primaryIso = $isos[0]
+          $tagName = $env:TAG_NAME
+          $notesPath = $env:NOTES_PATH
+
+          Write-Host "::group::Building Tiny11"
+          $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter
+          if (-not $driveLetter) {
+              Write-Error "Failed to mount ISO or get drive letter."
+              exit 1
+          }
+          Write-Host "ISO mounted on $driveLetter`:"
+          
+          $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
+          $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
+          $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
+          $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
+          & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
+          if (-not $?) {
+              Write-Error "tiny11maker.ps1 failed during execution."
+              exit 1
+          }
+          
+          Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
+          
+          if (Test-Path "tiny11.iso") {
+              $newName = $primaryIso.BaseName + "_Tiny11.iso"
+              Rename-Item "tiny11.iso" $newName
+              $newIso = Get-Item $newName
+              
+              Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split Zip)"
+              Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
+              $zipName = "$($newIso.BaseName).zip"
+              7z a -tzip -mx=0 -v1900m $zipName $newIso.FullName
+              
+              Write-Host "Uploading parts to GitHub Release..."
+              $parts = Get-ChildItem -Path "$($newIso.BaseName).zip.*"
+              foreach ($part in $parts) {
+                  gh release upload $tagName $part.FullName --clobber
+              }
+              Write-Host '::endgroup::'
+              
+              $appendSummary = [System.Text.StringBuilder]::new()
+              [void]$appendSummary.AppendLine("### Tiny11 Image")
+              [void]$appendSummary.AppendLine("- **ISO file**: ``$newName``")
+              [void]$appendSummary.AppendLine("#### Downloads (Tiny11)")
+              $partIndex = 1
+              foreach ($part in $parts) {
+                  $url = "https://github.com/${{ github.repository }}/releases/download/$tagName/$($part.Name)"
+                  [void]$appendSummary.AppendLine("- [Download Part $partIndex]($url)")
+                  $partIndex++
+              }
+              [void]$appendSummary.AppendLine('')
+              
+              $appendSummary.ToString() | Add-Content -Path $notesPath -Encoding utf8
+              gh release edit $tagName --notes-file $notesPath
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  $appendSummary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
+              }
+          } else {
+              Write-Error "tiny11.iso was not generated."
+          }
+          Write-Host "::endgroup::"
+
+      - name: Build and Upload Tiny11 Virtual Machine
+        if: ${{ github.event.inputs.build_type == 'Tiny11 Virtual Machine' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
+          if (-not $isos) {
+              Write-Error "No ISO files found."
+              exit 1
+          }
+          $primaryIso = $isos[0]
+          $tagName = $env:TAG_NAME
+          $notesPath = $env:NOTES_PATH
+
+          Write-Host "::group::Building Tiny11 Core VM"
+          $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter
+          if (-not $driveLetter) {
+              Write-Error "Failed to mount ISO or get drive letter."
+              exit 1
+          }
+          Write-Host "ISO mounted on $driveLetter`:"
+          
+          $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
+          $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
+          $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
+          $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
+          & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
+          
+          Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
+          
+          if (Test-Path "tiny11.iso") {
+              $newName = $primaryIso.BaseName + "_Tiny11_Core.iso"
+              Rename-Item "tiny11.iso" $newName
+              $newIso = Get-Item $newName
+              
+              Write-Host "::group::Uploading $($newIso.Name) to GitHub Release (Split 7z)"
+              Write-Host "Compressing and splitting the ISO into 1.9GB parts..."
+              $zipName = "$($newIso.BaseName).7z"
+              7z a -mx=0 -v1900m $zipName $newIso.FullName
+              
+              Write-Host "Uploading parts to GitHub Release..."
+              $parts = Get-ChildItem -Path "$($newIso.BaseName).7z.*"
+              foreach ($part in $parts) {
+                  gh release upload $tagName $part.FullName --clobber
+              }
+              Write-Host '::endgroup::'
+              
+              $appendSummary = [System.Text.StringBuilder]::new()
+              [void]$appendSummary.AppendLine("### Tiny11 Core Image")
+              [void]$appendSummary.AppendLine("- **ISO file**: ``$newName``")
+              [void]$appendSummary.AppendLine("#### Downloads (Tiny11 Core)")
+              $partIndex = 1
+              foreach ($part in $parts) {
+                  $url = "https://github.com/${{ github.repository }}/releases/download/$tagName/$($part.Name)"
+                  [void]$appendSummary.AppendLine("- [Download Part $partIndex]($url)")
+                  $partIndex++
+              }
+              [void]$appendSummary.AppendLine('')
+              
+              $appendSummary.ToString() | Add-Content -Path $notesPath -Encoding utf8
+              gh release edit $tagName --notes-file $notesPath
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  $appendSummary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
+              }
+          } else {
+              Write-Error "tiny11.iso (Core) was not generated."
+          }
+          Write-Host "::endgroup::"

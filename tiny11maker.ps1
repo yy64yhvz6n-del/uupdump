@@ -105,7 +105,7 @@ if ((Test-Path "$DriveLetter\sources\boot.wim") -eq $false -or (Test-Path "$Driv
         Get-WindowsImage -ImagePath $DriveLetter\sources\install.esd
         Write-Output ' '
         Write-Output 'Converting install.esd to install.wim. This may take a while...'
-        Export-WindowsImage -SourceImagePath $DriveLetter\sources\install.esd -SourceIndex $Index -DestinationImagePath $ScratchDisk\tiny11\sources\install.wim -Compressiontype Maximum -CheckIntegrity
+        dism.exe /Export-Image /SourceImageFile:"$DriveLetter\sources\install.esd" /SourceIndex:$Index /DestinationImageFile:"$ScratchDisk\tiny11\sources\install.wim" /Compress:maximum /CheckIntegrity
     } else {
         Write-Output "Can't find Windows OS Installation files in the specified Drive Letter.."
         Write-Output "Please enter the correct DVD Drive Letter.."
@@ -421,7 +421,7 @@ Write-Output "Unmounting image..."
 Dismount-WindowsImage -Path $ScratchDisk\scratchdir -Save
 if ($ESDCompression) {
     Write-Output "Compressing install.wim to install.esd (This will take a long time)..."
-    Export-WindowsImage -SourceImagePath "$ScratchDisk\tiny11\sources\install.wim" -SourceIndex 1 -DestinationImagePath "$ScratchDisk\tiny11\sources\install.esd" -CompressionType Recovery -CheckIntegrity
+    dism.exe /Export-Image /SourceImageFile:"$ScratchDisk\tiny11\sources\install.wim" /SourceIndex:1 /DestinationImageFile:"$ScratchDisk\tiny11\sources\install.esd" /Compress:recovery /CheckIntegrity
     Remove-Item "$ScratchDisk\tiny11\sources\install.wim" -Force
 }
 Write-Output "The tiny11 image is now completed. Proceeding with the making of the ISO..."
