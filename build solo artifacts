@@ -1,0 +1,647 @@
+name: Builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_version:
+        description: 'Operating System'
+        type: choice
+        options:
+          - 'Windows 11'
+          - 'Windows 10'
+        default: 'Windows 11'
+        required: true
+      os_ring:
+        description: 'Channel / Ring'
+        type: choice
+        options:
+          - 'Retail'
+          - 'Release Preview'
+          - 'Beta'
+          - 'Dev'
+          - 'Canary'
+        default: 'Retail'
+        required: true
+      os_arch:
+        description: 'Architecture'
+        type: choice
+        options:
+          - 'x64'
+          - 'arm64'
+        default: 'x64'
+        required: true
+      uup_id:
+        description: 'UUP Dump ID (Optional. If set, ignores OS/Ring selections)'
+        type: string
+        required: false
+      uup_language:
+        description: 'Language (ex: en-us, es-es, es-mx)'
+        type: string
+        default: 'en-us'
+        required: true
+      build_type:
+        description: 'Build Modification? (Select ONLY ONE edition if using Tiny11)'
+        type: choice
+        options:
+          - 'Without any modifications'
+          - 'Tiny11'
+          - 'Tiny11 Virtual Machine'
+        default: 'Without any modifications'
+        required: true
+      esd_compression:
+        description: 'ESD Compression (Smaller ISO)'
+        type: boolean
+        default: true
+      bypass_reqs:
+        description: 'Bypass System Requirements'
+        type: boolean
+        default: true
+      remove_edge:
+        description: 'Remove Microsoft Edge (Only Tiny11). Not Recommended'
+        type: boolean
+        default: false
+      strip_short_names:
+        description: 'Strip 8.3 short names (Only Tiny11)'
+        type: boolean
+        default: true
+      edition_home:
+        description: 'Windows Home'
+        type: boolean
+        default: true
+      edition_pro:
+        description: 'Windows Pro'
+        type: boolean
+        default: true
+      edition_homen:
+        description: 'Windows Home N'
+        type: boolean
+        default: false
+      edition_pron:
+        description: 'Windows Pro N'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Legal Disclaimer
+        run: |
+          Write-Host "=========================================================="
+          Write-Host "                      LEGAL WARNING                       "
+          Write-Host "=========================================================="
+          Write-Host "This script downloads and modifies Microsoft Windows OS."
+          Write-Host "By running this workflow, you accept the Microsoft Sysinternals EULA"
+          Write-Host "and acknowledge that YOU are responsible for compliance with"
+          Write-Host "Microsoft's End User License Agreement (EULA)."
+          Write-Host "This repository provides automation tools only and does NOT"
+          Write-Host "distribute copyrighted material."
+          Write-Host "=========================================================="
+
+      - name: Resolve UUP Dump ID via API
+        shell: pwsh
+        run: |
+          $manualId = '${{ github.event.inputs.uup_id }}'.Trim()
+          if ($manualId -match '^[a-fA-F0-9\-]{36}$') {
+              Write-Host "Manual UUP Dump ID provided: $manualId. Skipping API query."
+              echo "UUP_ID=$manualId" >> $env:GITHUB_ENV
+              exit 0
+          }
+          
+          $os = '${{ github.event.inputs.os_version }}'.ToLower()
+          $arch = '${{ github.event.inputs.os_arch }}'.ToLower()
+          if ($arch -eq 'x64') { $arch = 'amd64' } # UUP Dump API expects amd64
+          $ring = '${{ github.event.inputs.os_ring }}'.ToUpper()
+          
+          $searchQuery = "$os $arch"
+          if ($os -eq "windows 10") { $searchQuery = "windows 10 19045 $arch" }
+          if ($ring -eq "RETAIL" -and $os -eq "windows 11") { $searchQuery = "windows 11 26100 $arch" }
+          if ($ring -eq "CANARY" -and $os -eq "windows 11") { $searchQuery = "windows 11 $arch" }
+          
+          Write-Host "Searching UUP API for: $searchQuery (Ring: $ring)"
+          $listIdUrl = "https://api.uupdump.net/listid.php?search=$([uri]::EscapeDataString($searchQuery))"
+          $response = Invoke-RestMethod -Uri $listIdUrl
+          
+          $foundId = $null
+          if ($response.response.builds) {
+              $builds = $response.response.builds.PSObject.Properties.Value | Sort-Object created -Descending
+              
+              foreach ($build in $builds) {
+                  $uuid = $build.uuid
+                  $title = $build.title
+                  
+                  # Fast reject partial updates
+                  if ($title -match '\.NET' -or $title -match 'OOBE' -or $title -match 'Preview Update' -or $title -match '^Update for' -or $title -match '^Cumulative Update' -or $title -match 'Security Update') {
+                      continue
+                  }
+                  
+                  $isRingMatch = $false
+                  if ($ring -eq "RETAIL" -or $ring -eq "CANARY") {
+                      $isRingMatch = $true
+                  } else {
+                      $langUrl = "https://api.uupdump.net/listlangs.php?id=$uuid"
+                      try {
+                          $langResp = Invoke-RestMethod -Uri $langUrl -ErrorAction Stop
+                          $actualRing = $langResp.response.updateInfo.ring.ToUpper()
+                          $mappedRing = $actualRing
+                          if ($actualRing -eq 'WIF') { $mappedRing = 'DEV' }
+                          if ($actualRing -eq 'WIS') { $mappedRing = 'BETA' }
+                          if ($actualRing -eq 'RP') { $mappedRing = 'RELEASE PREVIEW' }
+                          if ($mappedRing -eq $ring) { $isRingMatch = $true }
+                      } catch {}
+                  }
+                  
+                  if ($isRingMatch) {
+                      $language = '${{ github.event.inputs.uup_language }}'.Trim().ToLower()
+                      $editionsUrl = "https://api.uupdump.net/listeditions.php?id=$uuid&pack=$language"
+                      try {
+                          $editionsResp = Invoke-RestMethod -Uri $editionsUrl -ErrorAction Stop
+                          if ($editionsResp.response.editionList) {
+                              $foundId = $uuid
+                              Write-Host "Selected Build: $title ($uuid)"
+                              break
+                          }
+                      } catch {}
+                  }
+              }
+          }
+          
+          if (-not $foundId) {
+              Write-Error "No build found for OS: $os, Ring: $ring, Arch: $arch."
+              exit 1
+          }
+          
+          Write-Host "Resolved UUP Dump ID: $foundId"
+          echo "UUP_ID=$foundId" >> $env:GITHUB_ENV
+
+      - name: Download and Configure UUP Dump Package
+        shell: pwsh
+        run: |
+          $newId = $env:UUP_ID
+          $language = '${{ github.event.inputs.uup_language }}'.Trim().ToLower()
+          
+          $editions = @()
+          if ('${{ github.event.inputs.edition_home }}' -eq 'true') { $editions += 'core' }
+          if ('${{ github.event.inputs.edition_pro }}' -eq 'true') { $editions += 'professional' }
+          if ('${{ github.event.inputs.edition_homen }}' -eq 'true') { $editions += 'coren' }
+          if ('${{ github.event.inputs.edition_pron }}' -eq 'true') { $editions += 'professionaln' }
+
+          if ($editions.Count -eq 0) {
+              Write-Error "You must select at least one edition."
+              exit 1
+          }
+          if ('${{ github.event.inputs.build_type }}' -ne 'Without any modifications' -and $editions.Count -gt 1) {
+              Write-Error "You can only select ONE edition when building Tiny11 (since index 1 is processed). To download multiple editions, select 'Without any modifications'."
+              exit 1
+          }
+          $edition = $editions -join '%3B'
+
+          Write-Host "Downloading the UUP dump package..."
+          $downloadPackageUrl = "https://uupdump.net/get.php?id=$newId&pack=$language&edition=$edition"
+          $downloadPackageBody = @{ autodl=2; updates=1; cleanup=1 }
+          
+          Invoke-WebRequest -Method Post -Uri $downloadPackageUrl -Body $downloadPackageBody -OutFile "uupdump_package.zip"
+          
+          Write-Host "Extracting package..."
+          Expand-Archive "uupdump_package.zip" -DestinationPath . -Force
+          
+          Write-Host "Configuring ConvertConfig.ini..."
+          $configPath = "ConvertConfig.ini"
+          if (Test-Path $configPath) {
+              $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { 1 } else { 0 }
+              $convertConfig = (Get-Content $configPath) -replace '^(AutoExit\s*)=.*','$1=1' -replace '^(ResetBase\s*)=.*','$1=1' -replace '^(Cleanup\s*)=.*','$1=1' -replace '^(AddUpdates\s*)=.*','$1=1' -replace '^(wim2esd\s*)=.*',"`$1=$esdComp"
+              Set-Content -Encoding ascii -Path $configPath -Value $convertConfig
+          }
+          
+          Write-Host "Patching aria2 flags in uup_download_windows.cmd to reduce log spam..."
+          $cmdPath = "uup_download_windows.cmd"
+          if (Test-Path $cmdPath) {
+              $content = Get-Content $cmdPath -Raw
+              $patternsToRemove = @(
+                '\s--console-log-level=\w+\b',
+                '\s--summary-interval=\d+\b',
+                '\s--download-result=\w+\b',
+                '\s--enable-color=\w+\b',
+                '\s-(?:q|quiet(?:=\w+)?)\b'
+              )
+              foreach ($re in $patternsToRemove) {
+                  $content = [regex]::Replace($content, $re, '', 'IgnoreCase, CultureInvariant')
+              }
+              $inject = '--quiet=true --console-log-level=error --summary-interval=0 --download-result=hide --enable-color=false '
+              $content = [regex]::Replace($content, '("%aria2%"\s+)', ('$1' + $inject), 'IgnoreCase, CultureInvariant')
+              
+              Set-Content -Path $cmdPath -Value $content -Encoding UTF8
+          }
+
+      - name: Patch get_aria2.ps1 to avoid Get-FileHash issues
+        shell: pwsh
+        run: |
+          $getAriaPath = "files/get_aria2.ps1"
+          if (Test-Path $getAriaPath) {
+              $content = Get-Content $getAriaPath -Raw
+              $search = '    $fileHash = (Get-FileHash -Path "files\$File" -Algorithm SHA256 -ErrorAction Stop).Hash'
+              $replacement = '    $stream = [System.IO.File]::OpenRead("$PWD\files\$File")' + "`n" + '    $sha256 = [System.Security.Cryptography.SHA256]::Create()' + "`n" + '    $hashBytes = $sha256.ComputeHash($stream)' + "`n" + '    $stream.Close()' + "`n" + '    $fileHash = [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()'
+              
+              if ($content -match 'Get-FileHash') {
+                  $content = $content.Replace($search, $replacement)
+                  $content = $content.Replace('return ($fileHash.ToLower() -eq $Hash)', 'return ($fileHash -eq $Hash)')
+                  Set-Content $getAriaPath -Value $content -Encoding UTF8
+                  Write-Host "Patched get_aria2.ps1 to use .NET SHA256"
+              }
+          }
+
+      - name: Building Windows Image
+        shell: pwsh
+        run: |
+          $rawLog = "uup_dism_aria2_raw.log"
+          
+          # Function to clean ansi escapes and log nicely
+          $reAnsi = [regex]'\x1B\[[0-9;]*[A-Za-z]'
+          $DismLastBucket = -1
+          
+          Write-Host "Starting uup_download_windows.cmd..."
+          
+          & {
+            cmd.exe /c uup_download_windows.cmd 2>&1 | Tee-Object -FilePath $rawLog | ForEach-Object {
+              $line = [string]$_
+              if ([string]::IsNullOrWhiteSpace($line)) { return }
+              
+              # Simple progress bucketing for DISM
+              $cleanLine = $reAnsi.Replace($line, '')
+              
+              if ($cleanLine -match '\[\s*[= \-]*\s*(\d+(?:[.,]\d+)?)%\s*[= \-]*\s*\]') {
+                $pctStr = $matches[1] -replace ',', '.'
+                $pct = [int][math]::Floor([double]$pctStr)
+                $bucket = [int]([math]::Floor($pct / 10) * 10)
+                
+                if ($bucket -gt $DismLastBucket) {
+                  $DismLastBucket = $bucket
+                  Write-Host "[DISM] Progress: $bucket%"
+                  if ($bucket -ge 100) { Write-Host "[DISM] Progress: 100% (done)"; $DismLastBucket = -1 }
+                }
+              }
+              elseif ($cleanLine -match 'Archiving file data:\s+.*?\((\d+)%\)\s+done') {
+                $pct = [int]$matches[1]
+                $bucket = [int]([math]::Floor($pct / 10) * 10)
+                if ($bucket -gt $DismLastBucket) {
+                  $DismLastBucket = $bucket
+                  Write-Host "[WIM] Progress: $bucket%"
+                  if ($bucket -ge 100) { Write-Host "[WIM] Progress: 100% (done)"; $DismLastBucket = -1 }
+                }
+              }
+              else {
+                if ($cleanLine -match '^\s*(Mounting image|Saving image|Applying image|Exporting image|Unmounting image|Deployment Image Servicing and Management tool|^=== )') {
+                  $DismLastBucket = -1
+                }
+                # Print non-progress lines
+                Write-Host $cleanLine
+              }
+            }
+          }
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning title=Build failed::Dumping last 500 raw log lines"
+            Get-Content $rawLog -Tail 500 | Write-Host
+            Write-Error "uup_download_windows.cmd failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+
+      - name: Create bypass requirements autounattend.xml
+        if: github.event.inputs.build_type == 'Without any modifications' && github.event.inputs.bypass_reqs == 'true'
+        shell: pwsh
+        run: |
+          $isofilesDir = "ISOFILES"
+          if (-not (Test-Path $isofilesDir)) { New-Item -ItemType Directory -Force -Path $isofilesDir | Out-Null }
+          $unattendPath = Join-Path $isofilesDir "autounattend.xml"
+          
+          if (Test-Path $unattendPath) {
+              Write-Host "An autounattend.xml already exists in ISOFILES. Skipping bypass injection to avoid overwriting user configuration."
+          } else {
+              Write-Host "Generating autounattend.xml to bypass Windows 11 requirements..."
+              $arch = '${{ github.event.inputs.os_arch }}'
+              $procArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
+              $xml = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <unattend xmlns="urn:schemas-microsoft-com:unattend">
+              <settings pass="windowsPE">
+                  <component name="Microsoft-Windows-Setup" processorArchitecture="$procArch" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                      <RunSynchronous>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>1</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>2</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>3</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>4</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                          <RunSynchronousCommand wcm:action="add">
+                              <Order>5</Order>
+                              <Path>reg add HKLM\System\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+                          </RunSynchronousCommand>
+                      </RunSynchronous>
+                  </component>
+              </settings>
+          </unattend>
+          "@
+              Set-Content -Path $unattendPath -Value $xml -Encoding UTF8
+          }
+
+      - name: Inject ISOFILES into standard ISO
+        shell: pwsh
+        run: |
+          $isofilesDir = "ISOFILES"
+          if (-not (Test-Path $isofilesDir)) { exit 0 }
+          
+          $customFiles = @(Get-ChildItem -Path $isofilesDir -File -Recurse | Where-Object { $_.BaseName -ne 'Add files.md' })
+          if ($customFiles.Count -eq 0) {
+              Write-Host "No custom files found in ISOFILES. Skipping injection."
+              exit 0
+          }
+          
+          if ('${{ github.event.inputs.build_type }}' -ne 'Without any modifications') {
+              Write-Host "Skipping standard ISO injection since a Tiny11 script will handle it."
+              exit 0
+          }
+          
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
+          if (-not $isos) { exit 0 }
+          $isoPath = $isos[0].FullName
+          
+          Write-Host "::group::Injecting ISOFILES into $($isos[0].Name)"
+          $scratchDir = "$env:SystemDrive\iso_scratch"
+          New-Item -ItemType Directory -Force -Path $scratchDir | Out-Null
+          
+          Write-Host "Mounting ISO..."
+          $mountResult = Mount-DiskImage -ImagePath $isoPath -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter + ":"
+          
+          Write-Host "Extracting ISO contents..."
+          Copy-Item -Path "$driveLetter\*" -Destination $scratchDir -Recurse -Force
+          Dismount-DiskImage -ImagePath $isoPath | Out-Null
+          
+          Write-Host "Injecting files..."
+          Copy-Item -Path "$isofilesDir\*" -Destination $scratchDir -Recurse -Force -Exclude "Add files.md"
+          
+          Write-Host "Rebuilding ISO..."
+          $oscdimg = "files\oscdimg.exe"
+          if (-not (Test-Path $oscdimg)) {
+              New-Item -ItemType Directory -Force -Path "files" | Out-Null
+              $url = "https://msdl.microsoft.com/download/symbols/oscdimg.exe/3D44737265000/oscdimg.exe"
+              Invoke-WebRequest -Uri $url -OutFile $oscdimg
+          }
+          
+          Remove-Item $isoPath -Force
+          & $oscdimg -m -o -u2 -udfver102 "-bootdata:2#p0,e,b$scratchDir\boot\etfsboot.com#pEF,e,b$scratchDir\efi\microsoft\boot\efisys.bin" $scratchDir $isoPath
+          
+          Write-Host "Cleaning up..."
+          Remove-Item -Path $scratchDir -Recurse -Force
+          Write-Host "::endgroup::"
+
+      - name: Create Release and Upload Standard ISO
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
+          if (-not $isos) {
+              Write-Error "No ISO files found to upload."
+              exit 1
+          }
+
+          $archMap = @{
+              'A64'   = 'ARM64'
+              'AMD64' = 'x64'
+              'X64'   = 'x64'
+              'X86'   = 'x86'
+              'ARM64' = 'ARM64'
+          }
+
+          $summary = [System.Text.StringBuilder]::new()
+          [void]$summary.AppendLine('## Build Summary')
+          [void]$summary.AppendLine('')
+
+          $primaryBuild = ""
+          $primaryIso = $isos[0]
+          
+          foreach ($iso in $isos) {
+              $name = $iso.BaseName
+              $build   = if ($name -match '^(\d+\.\d+)')                                                                                              { $matches[1] } else { '' }
+              $version = if ($name -match '\.(\d+H\d+)_')                                                                                             { $matches[1] } else { '' }
+              $archRaw = if ($name -match '_(A64|AMD64|X64|X86|ARM64)FRE_')                                                                           { $matches[1] } else { '' }
+              $arch    = if ($archRaw -and $archMap.ContainsKey($archRaw))                                                                            { $archMap[$archRaw] } else { $archRaw }
+              $edition = if ($name -match '_(CLIENT[A-Z]*|SERVER[A-Z]*|PROFESSIONAL|HOME[A-Z]*|ENTERPRISE[A-Z]*|EDUCATION[A-Z]*|CORE[A-Z]*)_')      { $matches[1] } else { '' }
+              $lang    = if ($name -match '_([a-z]{2,3}-[a-z]{2,5})$')                                                                                { $matches[1].ToUpper() } else { '' }
+
+              if ($build -and -not $primaryBuild) {
+                  $primaryBuild = $build
+              }
+
+              $titleParts = @()
+              if ($version) { $titleParts += $version }
+              if ($arch)    { $titleParts += $arch }
+              if ($edition) { $titleParts += $edition }
+              $suffix = if ($titleParts.Count) { ' (' + ($titleParts -join ' · ') + ')' } else { '' }
+              $heading = if ($build) { "### Build $build$suffix" } else { "### $($iso.Name)" }
+
+              [void]$summary.AppendLine($heading)
+              [void]$summary.AppendLine('')
+              [void]$summary.AppendLine('| Field | Value |')
+              [void]$summary.AppendLine('| --- | --- |')
+              if ($build)   { [void]$summary.AppendLine("| Build | $build |") }
+              if ($version) { [void]$summary.AppendLine("| Version | $version |") }
+              if ($arch)    { [void]$summary.AppendLine("| Architecture | $arch |") }
+              if ($edition) { [void]$summary.AppendLine("| Edition | $edition |") }
+              if ($lang)    { [void]$summary.AppendLine("| Language | $lang |") }
+              [void]$summary.AppendLine("| ISO file | ``$($iso.Name)`` |")
+              [void]$summary.AppendLine('')
+          }
+
+          [void]$summary.AppendLine('## Workflow Configuration')
+          $buildType = '${{ github.event.inputs.build_type }}'
+          if ($buildType -match 'Tiny11') {
+              [void]$summary.AppendLine("- **Build Type:** $buildType")
+          }
+          if ('${{ github.event.inputs.esd_compression }}' -eq 'true') {
+              [void]$summary.AppendLine("- **ESD Compression:** Enabled")
+          }
+          if ('${{ github.event.inputs.remove_edge }}' -eq 'true') {
+              [void]$summary.AppendLine("- **Remove Microsoft Edge:** Yes")
+          }
+          if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') {
+              [void]$summary.AppendLine("- **Strip 8.3 short names:** Yes")
+          }
+          $editions = @()
+          if ('${{ github.event.inputs.edition_home }}' -eq 'true') { $editions += 'Home' }
+          if ('${{ github.event.inputs.edition_pro }}' -eq 'true') { $editions += 'Pro' }
+          if ('${{ github.event.inputs.edition_homen }}' -eq 'true') { $editions += 'Home N' }
+          if ('${{ github.event.inputs.edition_pron }}' -eq 'true') { $editions += 'Pro N' }
+          if ($editions.Count -gt 0) {
+              [void]$summary.AppendLine("- **Editions Included:** $($editions -join ', ')")
+          }
+          [void]$summary.AppendLine('')
+
+          $dateStr = Get-Date -Format "yyyy-MM-dd"
+          $tagName = if ($primaryBuild) { "build-$primaryBuild-$dateStr" } else { "build-$dateStr" }
+          $releaseTitle = if ($primaryBuild) { "Build $primaryBuild ($dateStr)" } else { "Build $dateStr" }
+          
+          [void]$summary.AppendLine("### Downloads (Windows Original)")
+          [void]$summary.AppendLine("- ISO is available as a GitHub Artifact.")
+
+          # Export for next steps
+          echo "ISO_NAME=$($isos[0].Name)" >> $env:GITHUB_ENV
+          echo "ISO_PATH=$($isos[0].FullName)" >> $env:GITHUB_ENV
+          
+          if ($env:GITHUB_STEP_SUMMARY) {
+              $summary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          }
+
+      - name: Upload Standard ISO Artifact
+        if: ${{ github.event.inputs.build_type == 'Without any modifications' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ISO_NAME }}
+          path: ${{ env.ISO_PATH }}
+          retention-days: 7
+
+      - name: Build and Upload Tiny11
+        if: ${{ github.event.inputs.build_type == 'Tiny11' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
+          if (-not $isos) {
+              Write-Error "No ISO files found."
+              exit 1
+          }
+          $primaryIso = $isos[0]
+          # Variables removed as we use artifacts now
+
+          Write-Host "::group::Building Tiny11"
+          $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter
+          if (-not $driveLetter) {
+              Write-Error "Failed to mount ISO or get drive letter."
+              exit 1
+          }
+          Write-Host "ISO mounted on $driveLetter`:"
+          
+          $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
+          $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
+          $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
+          $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
+          & .\tiny11maker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
+          if (-not $?) {
+              Write-Error "tiny11maker.ps1 failed during execution."
+              exit 1
+          }
+          
+          Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
+          
+          if (Test-Path "tiny11.iso") {
+              $newName = $primaryIso.BaseName + "_Tiny11.iso"
+              Rename-Item "tiny11.iso" $newName
+              $newIso = Get-Item $newName
+              Write-Host "::group::Preparing artifact..."
+              echo "TINY11_ISO_NAME=$newName" >> $env:GITHUB_ENV
+              echo "TINY11_ISO_PATH=$($newIso.FullName)" >> $env:GITHUB_ENV
+              Write-Host '::endgroup::'
+              
+              $appendSummary = [System.Text.StringBuilder]::new()
+              [void]$appendSummary.AppendLine("### Tiny11 Image")
+              [void]$appendSummary.AppendLine("- **ISO file**: ``$newName``")
+              [void]$appendSummary.AppendLine("#### Downloads (Tiny11)")
+              [void]$appendSummary.AppendLine("- ISO is available as a GitHub Artifact.")
+              [void]$appendSummary.AppendLine('')
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  $appendSummary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
+              }
+          } else {
+              Write-Error "tiny11.iso was not generated."
+          }
+          Write-Host "::endgroup::"
+
+      - name: Upload Tiny11 ISO Artifact
+        if: ${{ github.event.inputs.build_type == 'Tiny11' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TINY11_ISO_NAME }}
+          path: ${{ env.TINY11_ISO_PATH }}
+          retention-days: 7
+
+      - name: Build and Upload Tiny11 Virtual Machine
+        if: ${{ github.event.inputs.build_type == 'Tiny11 Virtual Machine' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $isos = @(Get-ChildItem -Path . -Filter *.ISO -File)
+          if (-not $isos) {
+              Write-Error "No ISO files found."
+              exit 1
+          }
+          $primaryIso = $isos[0]
+          # Variables removed as we use artifacts now
+
+          Write-Host "::group::Building Tiny11 Core VM"
+          $mountResult = Mount-DiskImage -ImagePath $primaryIso.FullName -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter
+          if (-not $driveLetter) {
+              Write-Error "Failed to mount ISO or get drive letter."
+              exit 1
+          }
+          Write-Host "ISO mounted on $driveLetter`:"
+          
+          $bypassReqs = if ('${{ github.event.inputs.bypass_reqs }}' -eq 'true') { $true } else { $false }
+          $esdComp = if ('${{ github.event.inputs.esd_compression }}' -eq 'true') { $true } else { $false }
+          $removeEdge = if ('${{ github.event.inputs.remove_edge }}' -eq 'true') { $true } else { $false }
+          $stripShortNames = if ('${{ github.event.inputs.strip_short_names }}' -eq 'true') { $true } else { $false }
+          & .\tiny11Coremaker.ps1 -ISO $driveLetter -Index 1 -BypassReqs:$bypassReqs -ESDCompression:$esdComp -RemoveEdge:$removeEdge -StripShortNames:$stripShortNames
+          
+          Dismount-DiskImage -ImagePath $primaryIso.FullName -ErrorAction SilentlyContinue | Out-Null
+          
+          if (Test-Path "tiny11.iso") {
+              $newName = $primaryIso.BaseName + "_Tiny11_Core.iso"
+              Rename-Item "tiny11.iso" $newName
+              $newIso = Get-Item $newName
+              
+              Write-Host "::group::Preparing artifact..."
+              echo "TINY11_CORE_ISO_NAME=$newName" >> $env:GITHUB_ENV
+              echo "TINY11_CORE_ISO_PATH=$($newIso.FullName)" >> $env:GITHUB_ENV
+              Write-Host '::endgroup::'
+              
+              $appendSummary = [System.Text.StringBuilder]::new()
+              [void]$appendSummary.AppendLine("### Tiny11 Core Image")
+              [void]$appendSummary.AppendLine("- **ISO file**: ``$newName``")
+              [void]$appendSummary.AppendLine("#### Downloads (Tiny11 Core)")
+              [void]$appendSummary.AppendLine("- ISO is available as a GitHub Artifact.")
+              [void]$appendSummary.AppendLine('')
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  $appendSummary.ToString() | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
+              }
+          } else {
+              Write-Error "tiny11.iso (Core) was not generated."
+          }
+          Write-Host "::endgroup::"
+
+      - name: Upload Tiny11 Core Artifact
+        if: ${{ github.event.inputs.build_type == 'Tiny11 Virtual Machine' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TINY11_CORE_ISO_NAME }}
+          path: ${{ env.TINY11_CORE_ISO_PATH }}
+          retention-days: 7

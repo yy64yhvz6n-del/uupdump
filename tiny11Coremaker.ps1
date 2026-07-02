@@ -463,12 +463,37 @@ if ($StripShortNames) {
     Write-Host "Stripping 8.3 short names from the Windows image..."
     Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile "$PSScriptRoot\PsExec64.exe"
     & "$PSScriptRoot\PsExec64.exe" -accepteula -s "$env:windir\system32\fsutil.exe" 8dot3name strip /f /s "$mainOSDrive\scratchdir"
+    Start-Sleep -Seconds 3
 }
-& 'dism' '/English' '/unmount-image' "/mountdir:$mainOSDrive\scratchdir" '/commit'
+
+$unmounted = $false
+for ($i = 0; $i -lt 5; $i++) {
+    & 'dism' '/English' '/unmount-image' "/mountdir:$mainOSDrive\scratchdir" '/commit'
+    if ($LASTEXITCODE -eq 0) {
+        $unmounted = $true
+        break
+    }
+    Write-Host "Unmount failed, retrying in 5 seconds..."
+    Start-Sleep -Seconds 5
+}
+if (-not $unmounted) {
+    Write-Host "Forcing cleanup..."
+    & dism /cleanup-wim | Out-Null
+}
+
 Write-Host "Exporting image..."
 & 'dism' '/English' '/Export-Image' "/SourceImageFile:$mainOSDrive\tiny11\sources\install.wim" "/SourceIndex:$index" "/DestinationImageFile:$mainOSDrive\tiny11\sources\install2.wim" '/compress:max'
-Remove-Item -Path "$mainOSDrive\tiny11\sources\install.wim" -Force | Out-Null
-Rename-Item -Path "$mainOSDrive\tiny11\sources\install2.wim" -NewName "install.wim" | Out-Null
+
+for ($i = 0; $i -lt 5; $i++) {
+    try {
+        Remove-Item -Path "$mainOSDrive\tiny11\sources\install.wim" -Force -ErrorAction Stop | Out-Null
+        Rename-Item -Path "$mainOSDrive\tiny11\sources\install2.wim" -NewName "install.wim" -ErrorAction Stop | Out-Null
+        break
+    } catch {
+        Write-Host "Waiting for file handles to be released... ($i/5)"
+        Start-Sleep -Seconds 3
+    }
+}
 Write-Host "Windows image completed. Continuing with boot.wim."
 Write-Host "Mounting boot image:"
 $wimFilePath = "$($env:SystemDrive)\tiny11\sources\boot.wim" 
