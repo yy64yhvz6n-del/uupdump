@@ -53,3 +53,7 @@ Cualquier archivo o carpeta que coloque ahi, se comprimira en la misma ISO. Cada
 Una vez finalizado el proceso tienes 90 dias para descargar la ISO desde GitHub Actions Artifacts, tambien puedes encontrar las ISOs en la pestaña **Releases** divididas en partes, en caso que cree una versión de Tiny11 tendra tanto la original como la versión modificada por Tiny11.
 
 Parte del código para obtener versiones mediante la API de UUP fue gracias a [marcinmajsc/uup-dump-build-and-get-windows-iso](https://github.com/marcinmajsc/uup-dump-build-and-get-windows-iso).
+
+Al ejecutar este script, aceptas automáticamente el EULA de Microsoft Sysinternals para PsExec.
+
+Este proyecto es una herramienta automatizada para fines educativos/experimentales. El uso de esta herramienta puede invalidar la garantía o violar los Términos de Servicio de Microsoft. No se distribuyen imágenes de Windows en este repositorio. Úselo bajo su propio riesgo.
