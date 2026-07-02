@@ -486,13 +486,21 @@ Write-Host "Exporting image..."
 
 for ($i = 0; $i -lt 5; $i++) {
     try {
-        Remove-Item -Path "$mainOSDrive\tiny11\sources\install.wim" -Force -ErrorAction Stop | Out-Null
-        Rename-Item -Path "$mainOSDrive\tiny11\sources\install2.wim" -NewName "install.wim" -ErrorAction Stop | Out-Null
+        if (Test-Path "$mainOSDrive\tiny11\sources\install.wim") {
+            Remove-Item -Path "$mainOSDrive\tiny11\sources\install.wim" -Force -ErrorAction Stop | Out-Null
+        }
+        if (Test-Path "$mainOSDrive\tiny11\sources\install2.wim") {
+            Rename-Item -Path "$mainOSDrive\tiny11\sources\install2.wim" -NewName "install.wim" -ErrorAction Stop | Out-Null
+        }
         break
     } catch {
         Write-Host "Waiting for file handles to be released... ($i/5)"
         Start-Sleep -Seconds 3
     }
+}
+if (-not (Test-Path "$mainOSDrive\tiny11\sources\install.wim")) {
+    Write-Error "Failed to replace install.wim!"
+    exit 1
 }
 Write-Host "Windows image completed. Continuing with boot.wim."
 Write-Host "Mounting boot image:"
