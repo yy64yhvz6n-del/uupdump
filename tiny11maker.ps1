@@ -129,8 +129,8 @@ if ($ImagesIndex -notcontains $Index) {
 }
 Write-Output "Mounting Windows image. This may take a while."
 $wimFilePath = "$ScratchDisk\tiny11\sources\install.wim"
-& takeown "/F" $wimFilePath
-& icacls $wimFilePath "/grant" "$($adminGroup.Value):(F)"
+& takeown "/F" $wimFilePath | Out-Null
+& icacls $wimFilePath "/grant" "$($adminGroup.Value):(F)" | Out-Null
 try {
     Set-ItemProperty -Path $wimFilePath -Name IsReadOnly -Value $false -ErrorAction Stop
 } catch {
@@ -387,7 +387,7 @@ Write-Output "Windows image completed. Continuing with boot.wim."
 Write-Output "Mounting boot image:"
 $wimFilePath = "$ScratchDisk\tiny11\sources\boot.wim"
 & takeown "/F" $wimFilePath | Out-Null
-& icacls $wimFilePath "/grant" "$($adminGroup.Value):(F)"
+& icacls $wimFilePath "/grant" "$($adminGroup.Value):(F)" | Out-Null
 Set-ItemProperty -Path $wimFilePath -Name IsReadOnly -Value $false
 Mount-WindowsImage -ImagePath $ScratchDisk\tiny11\sources\boot.wim -Index 2 -Path $ScratchDisk\scratchdir
 Write-Output "Loading registry..."
